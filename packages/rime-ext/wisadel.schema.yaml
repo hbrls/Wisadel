@@ -1,0 +1,41 @@
+# Rime schema for text polishing MVP
+# This is a minimal schema for testing Rime + Lua integration
+
+schema:
+  schema_id: wisadel
+  name: "维什戴尔"
+  version: "0.1"
+  author:
+    - "shuaizhexu@gmail.com"
+  description: |
+    Text polishing tool using Rime + Lua.
+
+switches:
+  - name: ascii_mode
+    reset: 0
+    states: [ 中文, 西文 ]
+
+engine:
+  processors:
+    - ascii_composer
+    - key_binder
+    - selector
+  segmentors:
+    - ascii_segmentor
+  translators:
+    - lua_translator@polish_translator
+
+polish_translator:
+  tag: polish
+  dictionary: ""
+  script: lua/wisadel.lua
+  prefix: ""
+  suffix: ""
+  tips: 润色中...
+  closing_tips: 润色完成
+
+key_binder:
+  import_preset: default
+
+recognizer:
+  import_preset: default

@@ -1,0 +1,8 @@
+# Wisadel custom configuration
+# This file can be used for user-specific overrides
+
+# Example: patch settings here if needed
+# patch:
+#   switches:
+#     - name: ascii_mode
+#       reset: 0
