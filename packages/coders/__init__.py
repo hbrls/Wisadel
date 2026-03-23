@@ -10,11 +10,13 @@ Coders 模块
 """
 
 from .claudecode import ClaudeCode
-from .kilocode import KiloCode, probe, run_command
+from .kilocode import KiloCode, probe, run_command, run_prompt, create_session
 
 __all__ = [
     "KiloCode",
     "ClaudeCode",
     "probe",
     "run_command",
+    "run_prompt",
+    "create_session",
 ]

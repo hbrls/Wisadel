@@ -51,6 +51,7 @@ logger.info(f"跨包导入 coders 模块成功（env={_runtime_env}）")
 KiloCode = coders.KiloCode
 ClaudeCode = coders.ClaudeCode
 run_command = coders.run_command
+run_prompt = coders.run_prompt
 probe = coders.probe
 
-__all__ = ["coders", "KiloCode", "ClaudeCode", "run_command", "probe"]
+__all__ = ["coders", "KiloCode", "ClaudeCode", "run_command", "run_prompt", "probe"]
