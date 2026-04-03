@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "runbooks"
+version = "0.1.0"
+
+[tool.setuptools]
+packages = ["runbooks"]
+
+[tool.setuptools.package-dir]
+"runbooks" = "."

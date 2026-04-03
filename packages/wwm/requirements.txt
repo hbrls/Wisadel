@@ -1,0 +1,13 @@
+# Internal packages (editable install)
+-e ../runbooks
+
+# WWM (Windows Window Manager) Dependencies
+pyinstaller==6.11.1
+pyinstaller-hooks-contrib==2026.0
+
+# PySide6 - Qt for Python (GPL/LGPL commercial available)
+PySide6>=6.6.0
+
+# Additional Qt modules
+PySide6-Addons>=6.6.0
+PySide6-Essentials>=6.6.0
