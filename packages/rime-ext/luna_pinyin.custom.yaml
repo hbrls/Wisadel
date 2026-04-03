@@ -1,0 +1,13 @@
+# Rime patch for Wisadel
+# 在 luna_pinyin 基础上添加 Lua 扩展
+
+# + 表示追加到列表末尾
+patch:
+  "engine/processors/+":
+    - lua_processor@wisadel_key_processor
+  "engine/translators/+":
+    - lua_translator@date_translator
+  # "engine/filters/+":
+  #   - lua_filter@wisadel_filter
+  "engine/commiters/+":
+    - lua_committer@wisadel_commit
