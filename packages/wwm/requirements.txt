@@ -1,4 +1,5 @@
 # Internal packages (editable install)
+-e ../agents
 -e ../runbooks
 
 # WWM (Windows Window Manager) Dependencies
@@ -11,3 +12,13 @@ PySide6>=6.6.0
 # Additional Qt modules
 PySide6-Addons>=6.6.0
 PySide6-Essentials>=6.6.0
+
+# Agents
+smolagents==1.21.3
+
+# Common
+anthropic==0.74.1
+Jinja2==3.1.6
+loguru==0.7.3
+PyYAML==6.0.3
+requests==2.32.5

@@ -17,7 +17,7 @@ class TestMinimaxProviderIntegration(unittest.TestCase):
 
     def test_call_returns_string(self):
         """Test that __call__ returns a non-empty string"""
-        from agent.providers.minimax_provider import MinimaxProvider
+        from agents.providers.minimax_provider import MinimaxProvider
 
         provider = MinimaxProvider(api_key=self.api_key, model=self.model)
         
@@ -33,7 +33,7 @@ class TestMinimaxProviderIntegration(unittest.TestCase):
 
     def test_call_with_simple_prompt(self):
         """Test __call__ with a simple prompt"""
-        from agent.providers.minimax_provider import MinimaxProvider
+        from agents.providers.minimax_provider import MinimaxProvider
 
         provider = MinimaxProvider(api_key=self.api_key, model=self.model)
         
