@@ -11,6 +11,8 @@ from ui.main_window import MainWindow
 from ui import styles
 
 from agents.providers.minimax_provider import MinimaxProvider
+from agents.providers.bailian_provider import BailianProvider
+from agents.providers.volcengine_provider import VolcengineProvider
 
 
 def main():
@@ -27,7 +29,9 @@ def main():
     window.show()
 
     # Verify agents module is installed correctly
-    print(f"Agents module loaded: {MinimaxProvider}")
+    MinimaxProvider.probe()
+    # BailianProvider.probe()
+    VolcengineProvider.probe()
 
     sys.exit(app.exec())
 

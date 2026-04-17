@@ -16,24 +16,21 @@ class _AnthropicCompatiableProvider(Model):
     Anthropic 兼容 Provider 基类
     
     继承自 smolagents 的 Model 接口
-    子类需要指定:
-    - BASE_URL: API 端点地址
-    - 默认 model 值
+    子类通过构造函数传入 base_url、api_key、model 即可。
     """
     
-    # 子类必须覆盖
-    BASE_URL: str = ""
-    
-    def __init__(self, api_key: str, model: str):
+    def __init__(self, api_key: str, model: str, base_url: str):
         """
         初始化 Provider
         
         Args:
             api_key: API Key
             model: 模型名称
+            base_url: API 端点地址
         """
         self.api_key = api_key
         self.model = model
+        self.base_url = base_url
         self._client: Optional[anthropic.Anthropic] = None
     
     @property
@@ -42,7 +39,7 @@ class _AnthropicCompatiableProvider(Model):
         if self._client is None:
             self._client = anthropic.Anthropic(
                 api_key=self.api_key,
-                base_url=self.BASE_URL
+                base_url=self.base_url
             )
         return self._client
     

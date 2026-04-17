@@ -1,34 +1,34 @@
 """
-Minimax Provider for smolagents
+Volcengine Provider for smolagents
 
-实现 smolagents 的 Model 接口，封装 Minimax API 调用
-使用 Anthropic SDK 风格的接口，但调用 Minimax 服务
+实现 smolagents 的 Model 接口，封装 Volcengine API 调用
+使用 Anthropic SDK 风格的接口，但调用 Volcengine 服务
 """
 
 from agents.providers._anthropic_compatiable_provider import _AnthropicCompatiableProvider
 from agents.providers._config import Config
 
 
-class MinimaxProvider(_AnthropicCompatiableProvider):
+class VolcengineProvider(_AnthropicCompatiableProvider):
     """
-    Minimax Provider
+    Volcengine Provider
     
     继承自 _AnthropicCompatiableProvider 基类
-    仅 apiKey 从 ~/.config/wisadel/config.json 的 providers.minimax.options 下读取。
+    仅 apiKey 从 ~/.config/wisadel/config.json 的 providers.volcengine.options 下读取。
     baseUrl 与 model 由本类常量 BASE_URL / MODEL 维护，不走配置。
     """
     
-    BASE_URL = "https://api.minimaxi.com/anthropic"
-    MODEL = "MiniMax-M2.7"
+    BASE_URL = "https://ark.cn-beijing.volces.com/api/compatible"
+    MODEL = "glm-4-7-251222"
     
     def __init__(self):
         """
-        初始化 Minimax Provider
+        初始化 Volcengine Provider
         
-        通过 Config.get_provider("minimax") 读取 apiKey。
+        通过 Config.get_provider("volcengine") 读取 apiKey。
         """
         config = Config()
-        api_key = config.get_provider("minimax")
+        api_key = config.get_provider("volcengine")
         super().__init__(
             api_key=api_key,
             model=self.MODEL,
@@ -38,7 +38,7 @@ class MinimaxProvider(_AnthropicCompatiableProvider):
     @staticmethod
     def probe() -> None:
         """
-        探测 Minimax 模型的身份信息
+        探测 Volcengine 模型的身份信息
         
         向模型发送一组身份探针问题，直接打印响应，无返回值。
         用于快速验证 config / 网络 / 模型接入是否正常。
@@ -49,6 +49,6 @@ class MinimaxProvider(_AnthropicCompatiableProvider):
             "- 你的模型名称和版本是什么？\n"
             "- 你的知识截止日期是什么时候？"
         )
-        provider = MinimaxProvider()
+        provider = VolcengineProvider()
         response = provider([{"role": "user", "content": prompt}])
         print(response)
