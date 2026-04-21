@@ -3,52 +3,27 @@
 此模块提供与 Claude AI 集成的代码处理功能。
 """
 
-import subprocess
+import tempfile
 
 from loguru import logger
 
+from coders._command_coder import _CommandCoder
 
-class ClaudeCode:
+
+class ClaudeCode(_CommandCoder):
     """Claude AI 代码处理器"""
 
-    def __init__(self):
-        logger.info("ClaudeCode 初始化完成")
+    @classmethod
+    def probe(cls) -> None:
+        """探测 claude 命令是否可用"""
+        cwd = tempfile.gettempdir()
+        result = _CommandCoder.execute_command(cwd, "claude --version")
 
-    def run_command(self, command: str) -> subprocess.CompletedProcess | None:
-        """使用 Claude AI 处理命令
+        if result is None:
+            logger.error("claude 探针失败: 命令执行异常")
+            return
 
-        Args:
-            command: 要处理的命令字符串
-
-        Returns:
-            成功时返回 subprocess.CompletedProcess 对象，失败时返回 None
-
-        Note:
-            当前为占位实现，后续将集成 Claude API
-        """
-        logger.info(f"ClaudeCode.run_command() 输入: {command}")
-        # 占位实现：返回模拟的成功结果
-        result = subprocess.CompletedProcess(
-            args=command,
-            returncode=0,
-            stdout=f"[ClaudeCode] {command}",
-            stderr="",
-        )
-        logger.info(f"ClaudeCode.run_command() 输出: {result.stdout}")
-        return result
-
-
-# 模块级默认实例，提供便捷的函数式调用
-_default_instance = ClaudeCode()
-
-
-def run_command(command: str) -> subprocess.CompletedProcess | None:
-    """执行命令（模块级便捷函数）
-
-    Args:
-        command: 要执行的命令字符串
-
-    Returns:
-        成功时返回 subprocess.CompletedProcess 对象，失败时返回 None
-    """
-    return _default_instance.run_command(command)
+        if result.returncode == 0 and result.stdout.strip():
+            logger.info(f"claude 探针成功: {result.stdout.strip()}")
+        else:
+            logger.error("claude 探针失败: 未找到 claude 命令或执行出错")

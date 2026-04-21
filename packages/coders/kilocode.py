@@ -9,6 +9,7 @@
 """
 
 import os
+import tempfile
 import re
 import subprocess
 import sys
@@ -18,10 +19,11 @@ from uuid import uuid4
 
 from loguru import logger
 
-from coders.platform_utils import is_linux, is_macos, is_windows
+from coders._command_coder import _CommandCoder
+from coders.platform_utils import is_macos, is_windows
 
 
-class KiloCode:
+class KiloCode(_CommandCoder):
     """跨平台命令执行器"""
 
     def _validate_cwd(self, cwd: str | None) -> str:
@@ -38,47 +40,22 @@ class KiloCode:
 
         return cwd
 
-    def probe(self, cwd: str | None = None) -> None:
-        """探测 kilocode 命令是否可用
+    @classmethod
+    def probe(cls) -> None:
+        """探测 kilocode 命令是否可用"""
+        cwd = tempfile.gettempdir()
+        result = _CommandCoder.execute_command(cwd, "kilocode --version")
 
-        Args:
-            cwd: 工作目录路径，默认为用户主目录
-
-        Note:
-            - Windows: 使用 powershell -Command kilocode --version
-            - macOS/Linux: 使用 bash -c kilocode --version
-            - 成功时输出版本信息，失败时输出错误日志
-        """
-        cwd = self._validate_cwd(cwd)
-
-        if is_windows():
-            cmd = ["powershell", "-Command", "kilocode --version"]
-            kwargs = {"encoding": "utf-8", "errors": "replace"}
-        elif is_macos() or is_linux():
-            cmd = ["bash", "-c", "kilocode --version"]
-            kwargs = {}
-        else:
-            logger.error(f"不支持的平台: {sys.platform}")
+        if result is None:
+            logger.error("kilocode 探针失败: 命令执行异常")
             return
 
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                cwd=cwd,
-                **kwargs,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                logger.info(f"kilocode 探针成功: {result.stdout.strip()}")
-            else:
-                logger.error("kilocode 探针失败: 未找到 kilocode 命令或执行出错")
-        except Exception as e:
-            logger.error(f"kilocode 探针异常: {type(e).__name__}: {e}")
+        if result.returncode == 0 and result.stdout.strip():
+            logger.info(f"kilocode 探针成功: {result.stdout.strip()}")
+        else:
+            logger.error("kilocode 探针失败: 未找到 kilocode 命令或执行出错")
 
-    def _execute(
-        self, args: list[str], cwd: str
-    ) -> subprocess.CompletedProcess | None:
+    def _execute(self, args: list[str], cwd: str) -> subprocess.CompletedProcess | None:
         """执行子进程（内部方法）
 
         Args:
@@ -255,52 +232,45 @@ class KiloCode:
 _default_instance = KiloCode()
 
 
-def probe(cwd: str | None = None) -> None:
-    """探测 kilocode 命令是否可用（模块级便捷函数）
-
-    Args:
-        cwd: 工作目录路径，默认为用户主目录
-    """
-    _default_instance.probe(cwd)
-
-
 def create_session() -> str | None:
     """创建 kilocode 会话并返回会话 ID
-    
+
     执行 kilocode 命令创建新会话，并从输出中提取会话 ID。
-    
+
     Returns:
         成功时返回会话 ID 字符串，失败时返回 None
     """
     session_id = uuid4()
-    command = f'''kilocode run --model dashscope/glm-5 "Remember this KiloCodeSessionId={session_id}. Exit immediately." --print-logs'''
-    
+    command = f"""kilocode run --model dashscope/glm-5 "Remember this KiloCodeSessionId={session_id}. Exit immediately." --print-logs"""
+
     result = _default_instance.run_command(command)
-    
+
     if result is None:
         logger.error("创建会话失败: 命令执行失败")
         return None
-    
+
     # 获取 stdout 和 stderr 的最后 20 行
-    stdout_lines = result.stdout.strip().split('\n') if result.stdout.strip() else []
-    stderr_lines = result.stderr.strip().split('\n') if result.stderr.strip() else []
-    
+    stdout_lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
+    stderr_lines = result.stderr.strip().split("\n") if result.stderr.strip() else []
+
     # 合并 stdout 和 stderr，取最后 20 行
     all_lines = stdout_lines + stderr_lines
     last_20_lines = all_lines[-20:] if len(all_lines) > 20 else all_lines
-    output_text = '\n'.join(last_20_lines)
-    
+    output_text = "\n".join(last_20_lines)
+
     # 使用正则表达式从输出中解析 session ID
     # 输出格式: "stderr: INFO  2026-03-23T10:42:09 +1ms service=session.prompt sessionID=<id> exiting loop"
     # 匹配 "service=session.prompt sessionID=<id> exiting loop"
     # session ID 包含大小写字母、数字、中划线、下划线
-    pattern_exiting = r'service=session\.prompt\s+sessionID=([a-zA-Z0-9\-_]+)\s+exiting\s+loop'
+    pattern_exiting = (
+        r"service=session\.prompt\s+sessionID=([a-zA-Z0-9\-_]+)\s+exiting\s+loop"
+    )
     # 匹配 "service=session.prompt sessionID=<id> cancel"
-    pattern_cancel = r'service=session\.prompt\s+sessionID=([a-zA-Z0-9\-_]+)\s+cancel'
+    pattern_cancel = r"service=session\.prompt\s+sessionID=([a-zA-Z0-9\-_]+)\s+cancel"
 
     match_exiting = re.search(pattern_exiting, output_text)
     match_cancel = re.search(pattern_cancel, output_text)
-    
+
     id0 = match_exiting.group(1) if match_exiting else None
     id1 = match_cancel.group(1) if match_cancel else None
 
@@ -313,7 +283,9 @@ def create_session() -> str | None:
         return None
 
 
-def run_command(command: str, cwd: str | None = None) -> subprocess.CompletedProcess | None:
+def run_command(
+    command: str, cwd: str | None = None
+) -> subprocess.CompletedProcess | None:
     """执行跨平台命令（模块级便捷函数）
 
     Args:
@@ -326,7 +298,9 @@ def run_command(command: str, cwd: str | None = None) -> subprocess.CompletedPro
     return _default_instance.run_command(command, cwd)
 
 
-def run_prompt(prompt: str, cwd: str | None = None) -> subprocess.CompletedProcess | None:
+def run_prompt(
+    prompt: str, cwd: str | None = None
+) -> subprocess.CompletedProcess | None:
     """执行 kilocode 提示词（模块级便捷函数）
 
     Args:

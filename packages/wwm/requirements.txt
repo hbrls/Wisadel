@@ -1,6 +1,7 @@
 # Internal packages (editable install)
 -e ../agents
 -e ../runbooks
+-e ../coders
 
 # WWM (Windows Window Manager) Dependencies
 pyinstaller==6.11.1
