@@ -1,0 +1,4 @@
+# READONLY METADATA
+- appId: cms-mgr
+- planId: PLAN-102
+- source: "$ backstage-gitea plan GET-MARKDOWN /cms-mgr/PLAN-102"
