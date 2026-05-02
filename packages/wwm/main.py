@@ -34,8 +34,8 @@ def main():
     # MinimaxProvider.probe()
     # BailianProvider.probe()
     # VolcengineProvider.probe()
-    KiloCode.probe()
-    ClaudeCode.probe()
+    # KiloCode.probe()
+    # ClaudeCode.probe()
 
     sys.exit(app.exec())
 

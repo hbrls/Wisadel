@@ -117,7 +117,7 @@ class KiloCode(_CommandCoder):
             stderr_thread.start()
             logger.debug("输出读取线程已启动")
 
-            next_heartbeat = start_time + 5
+            next_heartbeat = start_time + 10
 
             while True:
                 return_code = process.poll()
@@ -202,39 +202,25 @@ class KiloCode(_CommandCoder):
         return self._execute(full_command, cwd)
 
     def run_prompt(
-        self, prompt: str, cwd: str | None = None
+        self, cwd: str, prompt: str
     ) -> subprocess.CompletedProcess | None:
         """执行 kilocode 提示词
 
         Args:
+            cwd: 工作目录路径
             prompt: 提示词字符串
-            cwd: 工作目录路径，默认为用户主目录
 
         Returns:
             成功时返回 subprocess.CompletedProcess 对象，失败时返回 None
-
-        Note:
-            - Windows: 通过 PowerShell 变量传递 prompt，避免特殊字符被解释
-            - macOS/Linux: 通过 bash 单引号传递 prompt
         """
-        cwd = self._validate_cwd(cwd)
-
         if is_windows():
-            # PowerShell 单引号字符串是字面量，不解释任何特殊字符
-            # 唯一需要转义的是单引号本身（' → ''）
-            escaped = prompt.strip().replace("'", "''")
-            ps_script = f"$p = '{escaped}'; kilocode run --model dashscope/glm-5 $p"
-            full_command = ["powershell", "-Command", ps_script]
-        elif is_macos() or is_linux():
-            # bash 单引号字符串是字面量，转义单引号：' → '\''
-            escaped = prompt.strip().replace("'", "'\\''")
-            bash_script = f"kilocode run --model dashscope/glm-5 '{escaped}'"
-            full_command = ["bash", "-c", bash_script]
+            args = ["pwsh", "-Command", f"kilocode run -- '{prompt.strip()}'"]
+        elif is_macos():
+            args = ["bash", "-c", f"kilocode run -- '{prompt.strip()}'"]
         else:
-            logger.error(f"不支持的平台: {sys.platform}")
-            return None
+            raise OSError("不支持的平台")
 
-        return self._execute(full_command, cwd)
+        return self._execute(args, cwd)
 
 
 _default_instance = KiloCode()
@@ -304,18 +290,3 @@ def run_command(
         成功时返回 subprocess.CompletedProcess 对象，失败时返回 None
     """
     return _default_instance.run_command(command, cwd)
-
-
-def run_prompt(
-    prompt: str, cwd: str | None = None
-) -> subprocess.CompletedProcess | None:
-    """执行 kilocode 提示词（模块级便捷函数）
-
-    Args:
-        prompt: 提示词字符串
-        cwd: 工作目录路径，默认为用户主目录
-
-    Returns:
-        成功时返回 subprocess.CompletedProcess 对象，失败时返回 None
-    """
-    return _default_instance.run_prompt(prompt, cwd)

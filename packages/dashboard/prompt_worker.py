@@ -27,7 +27,7 @@ class PromptWorker(QThread):
         """执行 prompt"""
         try:
             logger.debug(f"PromptWorker 开始执行:\n{self.prompt}")
-            run_prompt(self.prompt, cwd=self.cwd)
+            run_prompt(self.cwd, self.prompt)
             logger.debug("PromptWorker 执行完成")
         except Exception as exc:
             logger.error(f"PromptWorker 执行异常: {exc}")
