@@ -1,0 +1,8 @@
+# Phase Metadata
+- appId: wisadel
+- planId: PLAN-101
+- phaseId: PHASE-400
+- phaseName:
+- phaseStatus: TODO
+- $source: "backstage-gitea agent HEAD /wisadel/PLAN-101/PHASE-400"
+

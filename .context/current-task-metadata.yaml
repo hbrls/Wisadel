@@ -1,0 +1,6 @@
+# Task Metadata
+- appId: wisadel
+- taskId: TASK-KILOCODE-IDLE
+- taskName: KiloCode 子进程 idle 检测与 Continue 注入
+- taskStatus: IN_PROGRESS
+- $source: "kilocode.py _execute idle detection design"
