@@ -1,0 +1,4 @@
+# READONLY METADATA
+- appId: wisadel
+- planId: PLAN-101
+- source: "$ backstage-gitea plan GET /wisadel/PLAN-101"
