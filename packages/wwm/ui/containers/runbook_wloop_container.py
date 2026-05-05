@@ -3,29 +3,33 @@
 import os
 from string import Template
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton
+from PySide6.QtCore import Signal, Qt, QTimer
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSpacerItem, QSizePolicy
+from qfluentwidgets import PrimaryPushButton, PushButton, ProgressRing, BodyLabel, FluentIcon as FIF
+
+from ui.styles import COLORS, SPACING
 
 from runbooks.wloop import WLoop
-from ui.components.directory_selector_builder import DirectorySelectorBuilder
-from ui.components.file_selector_builder import FileSelectorBuilder
-from ui.components.solo_runner_builder import SoloRunnerBuilder
+from ui.components.directory_selector import DirectorySelector
+from ui.components.file_selector import FileSelector
 from ui.components.coder_worker import CoderWorker
 
 
 class WLoopSoloEpisode(QWidget):
-    """WLoop 专用的 FileSelector + SoloRunner 横向排列执行单元
-
-    Episode 的 Run Button 只打印，不执行实际动作。
-    实际执行由 Container 的 Run Button 控制。
+    """WLoop 专用的 FileSelector + ProgressRing 纵向排列执行单元
+    
+    状态展示使用 ProgressRing，基于 Worker elapsed_changed，5 分钟 = 100%。
     """
 
     file_changed = Signal(str)
+    run_finished = Signal()
+
+    PROGRESS_RING_SIZE = 40
+    PROGRESS_SECONDS_MAX = 300
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.file_selector = FileSelectorBuilder(parent=self)
-        self.solo_runner = SoloRunnerBuilder(parent=self)
+        self.file_selector = FileSelector(parent=self)
         self._working_directory = ""
         self._file_value = ""
         self._prompt = Template("")
@@ -35,35 +39,45 @@ class WLoopSoloEpisode(QWidget):
         self._connect_signals()
 
     def _setup_ui(self):
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(SPACING["sm"])
 
-        file_layout = self.file_selector.build(
-            parent=self,
-            default_value="",
-            button_text="选择文件",
-            placeholder_text="选择文件",
-        )
-        layout.addLayout(file_layout)
+        layout.addWidget(self.file_selector)
 
-        runner_layout = self.solo_runner.build(
-            working_directory="",
-            session_ids=[],
-            session_offset=0,
-            prompt=Template(""),
-            button_text="Run",
-            default_value="--:--",
-        )
-        layout.addLayout(runner_layout)
+        status_layout = QHBoxLayout()
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setSpacing(SPACING["sm"])
+
+        self._run_button = PushButton("Solo", self)
+        self._run_button.setFixedSize(100, 33)
+        status_layout.addWidget(self._run_button)
+
+        spacer = QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        status_layout.addSpacerItem(spacer)
+
+        ring_container = QWidget(self)
+        ring_container.setFixedSize(self.PROGRESS_RING_SIZE, self.PROGRESS_RING_SIZE)
+        ring_container.setStyleSheet("background: transparent; border: none;")
+
+        self._progress_ring = ProgressRing(ring_container)
+        self._progress_ring.setFixedSize(self.PROGRESS_RING_SIZE, self.PROGRESS_RING_SIZE)
+        self._progress_ring.setValue(0)
+
+        self._progress_label = BodyLabel("0s", ring_container)
+        self._progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._progress_label.setGeometry(0, 0, self.PROGRESS_RING_SIZE, self.PROGRESS_RING_SIZE)
+
+        status_layout.addWidget(ring_container)
+
+        layout.addLayout(status_layout)
 
     def _connect_signals(self):
         self.file_selector.file_changed.connect(self.file_changed.emit)
-        self.solo_runner.run_requested.connect(self._on_run_requested)
+        self._run_button.clicked.connect(self._on_run_requested)
 
     def set_working_directory(self, directory: str):
         self._working_directory = directory
-        self.solo_runner.set_working_directory(directory)
 
     def set_file_value(self, value: str):
         self._file_value = value
@@ -82,9 +96,9 @@ class WLoopSoloEpisode(QWidget):
     def set_sm_locked(self, locked: bool):
         self._sm_locked = locked
         if locked:
-            self.solo_runner.set_button_enabled(False)
+            self._run_button.setEnabled(False)
         else:
-            self.solo_runner.set_button_enabled(self._worker is None)
+            self._run_button.setEnabled(self._worker is None)
 
     def _on_run_requested(self):
         if self._sm_locked:
@@ -92,31 +106,40 @@ class WLoopSoloEpisode(QWidget):
         prompt = self._prompt.substitute(filename=self._file_value)
         cwd = self._working_directory
         print(f"[WLoopSoloEpisode] run: cwd={cwd}, prompt={prompt}")
-        self.solo_runner.set_button_enabled(False)
+
+        self._run_button.setEnabled(False)
+        self._progress_ring.setValue(0)
+        self._progress_label.setText("0s")
+
         self._worker = CoderWorker(cwd=cwd, prompt=prompt, parent=self)
         self._worker.finished.connect(self._on_worker_finished)
         self._worker.error.connect(self._on_worker_error)
+        self._worker.elapsed_changed.connect(self._on_elapsed_changed)
         self._worker.start()
 
     def _on_worker_finished(self):
-        self.solo_runner.set_status(0, "Done")
         self._worker = None
         if not self._sm_locked:
-            self.solo_runner.set_button_enabled(True)
-        self.solo_runner.run_finished.emit()
+            self._run_button.setEnabled(True)
+        self.run_finished.emit()
 
     def _on_worker_error(self, message: str):
         print(f"[WLoopSoloEpisode] error: {message}")
         self._worker = None
         if not self._sm_locked:
-            self.solo_runner.set_button_enabled(True)
-        self.solo_runner.run_finished.emit()
+            self._run_button.setEnabled(True)
+        self.run_finished.emit()
+
+    def _on_elapsed_changed(self, seconds: int):
+        percent = min(int(seconds / self.PROGRESS_SECONDS_MAX * 100), 100)
+        self._progress_ring.setValue(percent)
+        self._progress_label.setText(f"{seconds}s")
 
     def set_button_enabled(self, enabled: bool):
         if self._sm_locked:
-            self.solo_runner.set_button_enabled(False)
+            self._run_button.setEnabled(False)
         else:
-            self.solo_runner.set_button_enabled(enabled)
+            self._run_button.setEnabled(enabled)
 
 
 class RunbookWLoopContainer(QWidget):
@@ -155,22 +178,20 @@ class RunbookWLoopContainer(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        self._directory_selector = DirectorySelectorBuilder(parent=self)
-        dir_layout = self._directory_selector.build(
+        self._directory_selector = DirectorySelector(
             parent=self,
-            default_value=os.path.expanduser("~"),
             button_text="选择目录",
-            placeholder_text="选择目录",
+            placeholder_text="选择工作目录",
         )
-        layout.addLayout(dir_layout)
+        layout.addWidget(self._directory_selector)
 
         for episode_data in self.wloop.episodes:
             episode = WLoopSoloEpisode(parent=self)
             layout.addWidget(episode)
             self._episodes.append(episode)
 
-        self._run_button = QPushButton("Run")
-        self._run_button.setFixedSize(100, 36)
+        self._run_button = PrimaryPushButton(FIF.PLAY, "")
+        self._run_button.setStyleSheet(f"PrimaryPushButton {{ background-color: {COLORS['fluent_primary']}; border: none; border-radius: 4px; }}" )
         layout.addWidget(self._run_button)
 
     def _connect_signals(self):
@@ -199,13 +220,12 @@ class RunbookWLoopContainer(QWidget):
         self._sync_ui()
         print(f"[WLoopContainer] working_directory={self.wloop.working_directory}")
 
-    def _on_file_changed(self, episode_index: int, absolute_path: str):
+    def _on_file_changed(self, episode_index: int, relative_path: str):
         if self._syncing:
             return
-        relative = self._get_relative_path(absolute_path)
-        self.wloop.episodes[episode_index].filename = relative
+        self.wloop.episodes[episode_index].filename = relative_path
         self._sync_ui()
-        print(f"[WLoopContainer] episode[{episode_index}].filename={relative}")
+        print(f"[WLoopContainer] episode[{episode_index}].filename={relative_path}")
 
     def _on_run_requested(self):
         """Container 的 Run Button 点击：查询状态机决定是否执行"""
@@ -217,7 +237,6 @@ class RunbookWLoopContainer(QWidget):
             print("[WLoopContainer] Stop - loop limit reached")
 
     def _start_worker(self):
-        """创建 Worker 并启动"""
         episode = self._episodes[0]
         prompt = episode.get_prompt()
         cwd = episode.get_cwd()
@@ -235,7 +254,6 @@ class RunbookWLoopContainer(QWidget):
         self._worker.start()
 
     def _on_worker_finished(self):
-        """Worker 成功完成：查询状态机决定是否继续"""
         self._worker = None
         action = self.wloop.state_machine.next_action()
         if action == "continue_run":
@@ -247,7 +265,6 @@ class RunbookWLoopContainer(QWidget):
         self._sync_ui()
 
     def _on_worker_error(self, message: str):
-        """Worker 执行出错"""
         print(f"[WLoopContainer] error: {message}")
         self._worker = None
         self._enable_buttons()

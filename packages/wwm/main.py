@@ -5,7 +5,9 @@ WWM Main Entry Point
 """
 
 import sys
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
+from qfluentwidgets import setTheme, setThemeColor, Theme
 
 from ui.main_window import MainWindow
 from ui import styles
@@ -22,6 +24,10 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("WWM")
     app.setOrganizationName("Wishadel")
+
+    # Apply Fluent Design theme
+    setTheme(Theme.AUTO)
+    setThemeColor(QColor("#0078D4"))
 
     # Apply custom stylesheet
     styles.apply_stylesheet(app)

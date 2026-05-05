@@ -11,6 +11,7 @@ COLORS = {
     "primary": "#0078D4",        # Primary blue
     "primary_dark": "#005A9E",   # Primary dark
     "primary_light": "#E6F2FB",  # Primary light
+    "fluent_primary": "#1677ff", # Fluent PrimaryPushButton background
     "secondary": "#6B6B6B",      # Secondary gray
     "accent": "#107C10",         # Accent green
     "error": "#D13438",          # Error red

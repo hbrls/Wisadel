@@ -4,54 +4,49 @@ Main Window for WWM Desktop Client
 主窗口组件，包含应用的主要界面布局和功能区域。
 """
 
-from PySide6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import Signal, Slot
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QStatusBar
+from qfluentwidgets import FluentWidget
 
-from ui.layout_window_title_bar import LayoutWindowTitleBar
-from ui.layout_transparent import LayoutTransparent
-from ui.layout_window_status_bar import LayoutWindowStatusBar
 from runbooks.task import Task
 from ui.containers.runbook_task_container import RunbookTaskContainer
 from ui.containers.runbook_wloop_container import RunbookWLoopContainer
 from ui.containers.runbook_bootstrap_container import RunbookBootstrapContainer
 
 
-class MainWindow(QMainWindow):
+class MainWindow(FluentWidget):
     """Main application window."""
 
-    # Signals
     window_closing = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.task = Task()
+        self._setup_window()
         self._setup_ui()
         self._setup_connections()
 
-    def _setup_ui(self):
-        """Initialize the user interface."""
+    def _setup_window(self):
         self.setWindowTitle("维维美")
         self.setMinimumSize(900, 400)
-        self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        # self.setWindowOpacity(0.4)
+        self.setMicaEffectEnabled(False)
 
-        central = QWidget()
-        central.setAutoFillBackground(False)
-        self.setCentralWidget(central)
-
-        root = QVBoxLayout(central)
-        root.setContentsMargins(0, 0, 0, 0)
+    def _setup_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, self.titleBar.height(), 0, 0)
         root.setSpacing(0)
 
-        root.addWidget(LayoutWindowTitleBar("维维美"))
+        red_line = QWidget()
+        red_line.setFixedHeight(4)
+        red_line.setStyleSheet("background-color: red;")
+        root.addWidget(red_line)
 
         panels = QHBoxLayout()
         panels.setContentsMargins(0, 0, 0, 0)
         panels.setSpacing(0)
 
-        # 左：50% 透明（alpha=128），绿边框
-        self.bootstrap_panel = LayoutTransparent(128, "green")
+        self.bootstrap_panel = QWidget()
+        self.bootstrap_panel.setStyleSheet("border: 3px solid green;")
         bootstrap_layout = QVBoxLayout(self.bootstrap_panel)
 
         self.bootstrap_container = RunbookBootstrapContainer(self)
@@ -59,8 +54,8 @@ class MainWindow(QMainWindow):
 
         panels.addWidget(self.bootstrap_panel, stretch=2)
 
-        # 中：50% 透明（alpha=128），红边框
-        self.left_panel = LayoutTransparent(128, "red")
+        self.left_panel = QWidget()
+        self.left_panel.setStyleSheet("border: 3px solid red;")
         left_layout = QVBoxLayout(self.left_panel)
 
         self.runbook_container = RunbookTaskContainer(self.task, self)
@@ -68,8 +63,8 @@ class MainWindow(QMainWindow):
 
         panels.addWidget(self.left_panel, stretch=2)
 
-        # 右：90% 透明（alpha=26），蓝边框
-        self.right_panel = LayoutTransparent(26, "blue")
+        self.right_panel = QWidget()
+        self.right_panel.setStyleSheet("border: 3px solid blue;")
         right_layout = QVBoxLayout(self.right_panel)
 
         self.wloop_container = RunbookWLoopContainer(self)
@@ -79,22 +74,16 @@ class MainWindow(QMainWindow):
 
         root.addLayout(panels)
 
-        self.status_bar = LayoutWindowStatusBar()
-        self.setStatusBar(self.status_bar)
+        self.status_bar = QStatusBar()
+        self.status_bar.showMessage("Ready")
+        root.addWidget(self.status_bar)
 
     def _setup_connections(self):
-        """Connect signals and slots."""
         self.window_closing.connect(self._on_closing)
 
     @Slot()
     def _on_closing(self):
-        """Handle window close event."""
         self.close()
 
     def update_status(self, message: str):
-        """Update the status bar message.
-
-        Args:
-            message: Status message to display
-        """
         self.status_bar.showMessage(message)
