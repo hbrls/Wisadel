@@ -1,4 +1,4 @@
-"""Runbook Task 数据类"""
+"""Combo Plan 数据类"""
 
 from dataclasses import dataclass, field
 from string import Template
@@ -13,15 +13,15 @@ class Episode:
 
 
 @dataclass
-class TaskStateMachine:
-    """Task 顺序执行状态机：explore → execute → evaluate
+class PlanStateMachine:
+    """Plan 顺序执行状态机：explore → execute → evaluate
 
     显式管理三个阶段的状态流转。
     """
 
     PHASES = ["explore", "execute", "evaluate"]
 
-    task: "Task" = None
+    plan: "Plan" = None
     current_phase: str = "idle"
 
     def next_action(self) -> str:
@@ -62,17 +62,17 @@ class TaskStateMachine:
 
 
 @dataclass
-class Task:
-    """执行任务数据类（Domain 层）
+class Plan:
+    """执行计划数据类（Domain 层）
 
     纯业务逻辑，不涉及 UI。
     """
     working_directory: str = ""
     episodes: List[Episode] = field(default_factory=lambda: [
-        Episode(id="sk-explore-task", filename=".agents/workflows/sk-explore-task/WORKFLOW.md", prompt=Template("加载并执行 $filename")),
-        Episode(id="sk-execute-task", filename=".agents/workflows/sk-execute-task/WORKFLOW.md", prompt=Template("加载并执行 $filename")),
-        Episode(id="sk-evaluate-task", filename=".agents/workflows/sk-evaluate-task/WORKFLOW.md", prompt=Template("加载并执行 $filename")),
+        Episode(id="sk-explore-plan", filename=".agents/workflows/sk-explore-task/WORKFLOW.md", prompt=Template("加载并执行 $filename")),
+        Episode(id="sk-execute-plan", filename=".agents/workflows/sk-execute-task/WORKFLOW.md", prompt=Template("加载并执行 $filename")),
+        Episode(id="sk-evaluate-plan", filename=".agents/workflows/sk-evaluate-task/WORKFLOW.md", prompt=Template("加载并执行 $filename")),
     ])
 
     def __post_init__(self):
-        self.state_machine = TaskStateMachine(task=self)
+        self.state_machine = PlanStateMachine(plan=self)

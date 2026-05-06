@@ -2,14 +2,14 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout
 from qfluentwidgets import SubtitleLabel, FluentIcon as FIF
 
 from ui.styles import SPACING
-from ui.containers.runbook_task_container import RunbookTaskContainer
+from ui.containers.combo_plan_container import ComboPlanContainer
 
 
-class TaskPage(QWidget):
+class PlanPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setObjectName("TaskPage")
-        self.task_container = None
+        self.setObjectName("PlanPage")
+        self.plan_container = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -17,8 +17,8 @@ class TaskPage(QWidget):
         layout.setContentsMargins(SPACING["lg"], SPACING["lg"], SPACING["lg"], SPACING["lg"])
         layout.setSpacing(SPACING["md"])
 
-        title = SubtitleLabel("Task", self)
+        title = SubtitleLabel("Plan", self)
         layout.addWidget(title)
 
-        self.task_container = RunbookTaskContainer(self)
-        layout.addWidget(self.task_container, stretch=1)
+        self.plan_container = ComboPlanContainer(self)
+        layout.addWidget(self.plan_container, stretch=1)

@@ -141,7 +141,7 @@ class KiloCode(_CommandCoder):
                     logger.debug(
                         f"命令仍在执行中，已等待 {elapsed_seconds}s，PID: {process.pid}"
                     )
-                    next_heartbeat = now + 10
+                    next_heartbeat = now + 30
 
                 time.sleep(0.2)
 

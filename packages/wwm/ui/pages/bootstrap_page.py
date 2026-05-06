@@ -2,7 +2,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout
 from qfluentwidgets import SubtitleLabel, FluentIcon as FIF
 
 from ui.styles import SPACING
-from ui.containers.runbook_bootstrap_container import RunbookBootstrapContainer
+from ui.containers.combo_bootstrap_container import ComboBootstrapContainer
 
 
 class BootstrapPage(QWidget):
@@ -20,5 +20,5 @@ class BootstrapPage(QWidget):
         title = SubtitleLabel("Bootstrap", self)
         layout.addWidget(title)
 
-        self.bootstrap_container = RunbookBootstrapContainer(self)
+        self.bootstrap_container = ComboBootstrapContainer(self)
         layout.addWidget(self.bootstrap_container, stretch=1)

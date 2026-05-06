@@ -1,6 +1,6 @@
 # Internal packages (editable install)
 -e ../agents
--e ../runbooks
+-e ../combos
 -e ../coders
 
 # WWM (Windows Window Manager) Dependencies

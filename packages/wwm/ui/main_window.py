@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget, QStatusBar
 from qfluentwidgets import FluentWindow, FluentIcon as FIF, NavigationItemPosition, InfoBadge, InfoBadgePosition
 
 from ui.pages.bootstrap_page import BootstrapPage
-from ui.pages.task_page import TaskPage
+from ui.pages.plan_page import PlanPage
 from ui.pages.wloop_page import WLoopPage
 from ui.pages.account_settings_page import AccountPage, SettingsPage
 
@@ -48,9 +48,9 @@ class MainWindow(FluentWindow):
             position=NavigationItemPosition.TOP,
         )
 
-        self.task_page = TaskPage(self)
+        self.plan_page = PlanPage(self)
         self.addSubInterface(
-            self.task_page, FIF.CHECKBOX, "Task",
+            self.plan_page, FIF.CHECKBOX, "Plan",
             position=NavigationItemPosition.TOP,
         )
 

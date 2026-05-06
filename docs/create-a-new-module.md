@@ -10,7 +10,7 @@
 ```
 packages/
 ├── agents/          # Agent 模块（参考实现）
-├── runbooks/        # Runbooks 模块（参考实现）
+├── combos/          # Combos 模块（参考实现）
 └── wwm/             # Windows Window Manager（消费方）
     ├── requirements.txt  # 依赖声明
     └── main.py
@@ -75,7 +75,7 @@ packages/{module_name}/
  # Internal packages (editable install)
 +-e ../{module_name}
  -e ../agents
- -e ../runbooks
+ -e ../combos
 ```
 
 ### 5. 在消费方安装并验证
@@ -177,5 +177,5 @@ pip install -r packages/wwm/requirements.txt
 
 ## 参考实现
 
-- **runbooks 模块**: `packages/runbooks/` - 简单的 prompt 模板包
+- **combos 模块**: `packages/combos/` - 简单的 prompt 模板包
 - **agents 模块**: `packages/agents/` - 复杂的 Agent 框架包

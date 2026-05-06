@@ -1,10 +1,10 @@
-"""Runbook Bootstrap 数据类"""
+"""Combo Bootstrap 数据类"""
 
 from dataclasses import dataclass, field
 from string import Template
 from typing import List
 
-from runbooks.task import Episode
+from combos.plan import Episode
 
 
 @dataclass

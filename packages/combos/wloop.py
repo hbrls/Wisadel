@@ -1,4 +1,4 @@
-"""Runbook WLoop 数据类"""
+"""Combo WLoop 数据类"""
 
 from dataclasses import dataclass, field
 from string import Template

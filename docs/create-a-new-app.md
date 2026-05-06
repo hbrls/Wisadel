@@ -18,7 +18,7 @@ wishadel/
 │   ├── agents/                    # Agent 模块
 │   ├── coders/                    # 代码生成/处理模块
 │   ├── dashboard/                 # Dashboard UI 应用
-│   ├── runbooks/                  # Runbook 执行模块
+│   ├── combos/                    # Combo 执行模块
 │   └── wwm/                       # WWM (维维美) 桌面客户端
 └── ...
 ```
@@ -50,7 +50,7 @@ packages/
 
 ```txt
 # Internal packages (editable install)
--e ../runbooks
+-e ../combos
 
 # External dependencies
 PySide6>=6.6.0

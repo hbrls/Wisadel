@@ -1,4 +1,4 @@
-"""Runbook WLoop Container UI 组件"""
+"""Combo Plan Container UI 组件"""
 
 import os
 from string import Template
@@ -8,15 +8,14 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
 from qfluentwidgets import PrimaryPushButton, PushButton, ProgressRing, BodyLabel, FluentIcon as FIF, CardWidget
 
 from ui.styles import SPACING
-
-from runbooks.wloop import WLoop
+from combos.plan import Plan
 from ui.components.working_dir_selector import WorkingDirSelector
 from ui.components.file_selector import FileSelector
 from ui.components.coder_worker import CoderWorker
 
 
-class WLoopSoloEpisode(CardWidget):
-    """WLoop 专用的 FileSelector + SoloRunner 横向排列执行单元
+class PlanSoloEpisode(CardWidget):
+    """Plan 专用的 FileSelector + SoloRunner 横向排列执行单元
 
     持有唯一的执行真源：Worker、计时、ProgressRing。
     Solo 按钮和外部 Play 都通过 start_run() 触发同一条执行链。
@@ -99,7 +98,7 @@ class WLoopSoloEpisode(CardWidget):
             return
         prompt = self._prompt.substitute(filename=self._file_value)
         cwd = self._working_directory
-        print(f"[WLoopSoloEpisode] run: cwd={cwd}, prompt={prompt}")
+        print(f"[PlanSoloEpisode] run: cwd={cwd}, prompt={prompt}")
 
         self._run_button.setEnabled(False)
         self._progress_ring.setValue(0)
@@ -117,7 +116,7 @@ class WLoopSoloEpisode(CardWidget):
         self.start_run()
 
     def _on_worker_error(self, message: str):
-        print(f"[WLoopSoloEpisode] error: {message}")
+        print(f"[PlanSoloEpisode] error: {message}")
 
     def _on_worker_thread_finished(self):
         self._worker = None
@@ -146,8 +145,8 @@ class WLoopSoloEpisode(CardWidget):
             self._run_button.setEnabled(enabled)
 
 
-class RunbookWLoopContainer(QWidget):
-    """Runbook WLoop Container 组件
+class ComboPlanContainer(QWidget):
+    """Combo Plan Container 组件
 
     Container 只负责编排：
     - Play 按钮触发当前 Episode 的 start_run()，不自己创建 Worker。
@@ -155,25 +154,22 @@ class RunbookWLoopContainer(QWidget):
     - 不持有 Worker / Timer / Progress 等执行态。
     """
 
-    play_started = Signal()
-    play_stopped = Signal()
-
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.wloop = WLoop()
+        self.plan = Plan()
         self._syncing = False
         self._directory_selector = None
         self._episodes = []
         self._run_button = None
         self._setup_ui()
         self._connect_signals()
-        if not self.wloop.working_directory:
-            self.wloop.working_directory = os.path.expanduser("~")
+        if not self.plan.working_directory:
+            self.plan.working_directory = os.path.expanduser("~")
         self._sync_ui()
 
     def _get_relative_path(self, absolute_path: str) -> str:
-        if self.wloop.working_directory and absolute_path.startswith(self.wloop.working_directory):
-            return absolute_path[len(self.wloop.working_directory):].lstrip("/\\")
+        if self.plan.working_directory and absolute_path.startswith(self.plan.working_directory):
+            return absolute_path[len(self.plan.working_directory):].lstrip("/\\")
         return absolute_path
 
     def _setup_ui(self):
@@ -190,8 +186,8 @@ class RunbookWLoopContainer(QWidget):
 
         layout.addWidget(self._directory_selector)
 
-        for episode_data in self.wloop.episodes:
-            episode = WLoopSoloEpisode(parent=self)
+        for episode_data in self.plan.episodes:
+            episode = PlanSoloEpisode(parent=self)
             layout.addWidget(episode)
             self._episodes.append(episode)
 
@@ -209,11 +205,11 @@ class RunbookWLoopContainer(QWidget):
     def _sync_ui(self):
         self._syncing = True
 
-        self._directory_selector.set_value(self.wloop.working_directory)
+        self._directory_selector.set_value(self.plan.working_directory)
 
         for i, episode in enumerate(self._episodes):
-            episode_data = self.wloop.episodes[i]
-            episode.set_working_directory(self.wloop.working_directory)
+            episode_data = self.plan.episodes[i]
+            episode.set_working_directory(self.plan.working_directory)
             episode.set_file_value(episode_data.filename)
             episode.set_prompt(episode_data.prompt)
 
@@ -222,44 +218,44 @@ class RunbookWLoopContainer(QWidget):
     def _on_directory_changed(self, path: str):
         if self._syncing:
             return
-        self.wloop.working_directory = path
+        self.plan.working_directory = path
         self._sync_ui()
-        print(f"[WLoopContainer] working_directory={self.wloop.working_directory}")
+        print(f"[PlanContainer] working_directory={self.plan.working_directory}")
 
     def _on_file_changed(self, episode_index: int, relative_path: str):
         if self._syncing:
             return
-        self.wloop.episodes[episode_index].filename = relative_path
+        self.plan.episodes[episode_index].filename = relative_path
         self._sync_ui()
-        print(f"[WLoopContainer] episode[{episode_index}].filename={relative_path}")
+        print(f"[PlanContainer] episode[{episode_index}].filename={relative_path}")
 
     def _on_play_clicked(self):
-        action = self.wloop.state_machine.next_action()
+        action = self.plan.state_machine.next_action()
         if action in ("start_run", "continue_run"):
-            episode = self._episodes[0]
+            episode_index = self.plan.state_machine.get_current_episode_index()
+            episode = self._episodes[episode_index]
             if episode.is_running():
                 return
             for ep in self._episodes:
                 ep.set_sm_locked(True)
             self._run_button.setEnabled(False)
             episode.start_run()
-            self.play_started.emit()
-            print(f"[WLoopContainer] Run started (action={action}, count={self.wloop.state_machine.current_count})")
+            print(f"[PlanContainer] Run started (action={action}, phase={self.plan.state_machine.current_phase})")
         else:
-            print("[WLoopContainer] Stop - loop limit reached")
+            print("[PlanContainer] Stop - all episodes completed")
 
     def _on_episode_finished(self):
-        action = self.wloop.state_machine.next_action()
+        action = self.plan.state_machine.next_action()
         if action == "continue_run":
-            episode = self._episodes[0]
+            episode_index = self.plan.state_machine.get_current_episode_index()
+            episode = self._episodes[episode_index]
             episode.start_run()
-            print(f"[WLoopContainer] Run completed, continuing... (count={self.wloop.state_machine.current_count})")
+            print(f"[PlanContainer] Run completed, continuing... (phase={self.plan.state_machine.current_phase})")
         else:
             self._run_button.setEnabled(True)
-            self.wloop.state_machine.reset()
+            self.plan.state_machine.reset()
             for ep in self._episodes:
                 ep.set_sm_locked(False)
                 ep.set_button_enabled(True)
-            self.play_stopped.emit()
-            print(f"[WLoopContainer] Run completed, all loops finished (total={self.wloop.state_machine.current_count})")
+            print(f"[PlanContainer] Run completed, all episodes finished (phase={self.plan.state_machine.current_phase})")
         self._sync_ui()
