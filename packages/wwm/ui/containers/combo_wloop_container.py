@@ -4,15 +4,16 @@ import os
 from string import Template
 
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame
 from qfluentwidgets import PrimaryPushButton, PushButton, ProgressRing, BodyLabel, FluentIcon as FIF, CardWidget
 
 from ui.styles import SPACING
 
-from combos.wloop import WLoop
+from combos.wloop import WLoop, Episode
 from ui.components.working_dir_selector import WorkingDirSelector
 from ui.components.file_selector import FileSelector
 from ui.components.coder_worker import CoderWorker
+from ui.components.combo_states import ComboStates
 
 
 class WLoopSoloEpisode(CardWidget):
@@ -28,8 +29,9 @@ class WLoopSoloEpisode(CardWidget):
     PROGRESS_RING_SIZE = 40
     PROGRESS_SECONDS_MAX = 300
 
-    def __init__(self, parent=None):
+    def __init__(self, episode_id: str, parent=None):
         super().__init__(parent)
+        self.episode_id = episode_id
         self.file_selector = FileSelector(parent=self)
         self._working_directory = ""
         self._file_value = ""
@@ -149,10 +151,11 @@ class WLoopSoloEpisode(CardWidget):
 class ComboWLoopContainer(QWidget):
     """Combo WLoop Container 组件
 
-    Container 只负责编排：
-    - Play 按钮触发当前 Episode 的 start_run()，不自己创建 Worker。
-    - 通过 Episode 的 run_finished 信号决定是否继续下一轮。
-    - 不持有 Worker / Timer / Progress 等执行态。
+    Container 只负责渲染和执行指令：
+    - 渲染：foreach ep in Model.episodes, if ep.component == "WLoopSoloEpisode", render WLoopSoloEpisode
+    - 执行：Model.next() 返回指令，Container 执行
+
+    状态机控制！Container 不决策，只执行指令。
     """
 
     play_started = Signal()
@@ -161,15 +164,19 @@ class ComboWLoopContainer(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.wloop = WLoop()
+        self._play_active = False
         self._syncing = False
         self._directory_selector = None
         self._episodes = []
+        self._episode_map = {}
         self._run_button = None
+        self._state_history = None
         self._setup_ui()
         self._connect_signals()
         if not self.wloop.working_directory:
             self.wloop.working_directory = os.path.expanduser("~")
         self._sync_ui()
+        self._state_history.append(self.wloop.state)
 
     def _get_relative_path(self, absolute_path: str) -> str:
         if self.wloop.working_directory and absolute_path.startswith(self.wloop.working_directory):
@@ -177,10 +184,15 @@ class ComboWLoopContainer(QWidget):
         return absolute_path
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setSpacing(SPACING["md"])
+
+        left_panel = QWidget(self)
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(8)
+        left_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self._directory_selector = WorkingDirSelector(
             parent=self,
@@ -188,16 +200,28 @@ class ComboWLoopContainer(QWidget):
             placeholder_text="选择工作目录",
         )
 
-        layout.addWidget(self._directory_selector)
+        left_layout.addWidget(self._directory_selector)
 
-        for episode_data in self.wloop.episodes:
-            episode = WLoopSoloEpisode(parent=self)
-            layout.addWidget(episode)
-            self._episodes.append(episode)
+        for ep in self.wloop.episodes:
+            if ep.component == "WLoopSoloEpisode":
+                episode_ui = WLoopSoloEpisode(episode_id=ep.id, parent=self)
+                left_layout.addWidget(episode_ui)
+                self._episodes.append(episode_ui)
+                self._episode_map[ep.id] = episode_ui
 
         self._run_button = PrimaryPushButton(FIF.PLAY, "", self)
         self._run_button.setFixedHeight(33)
-        layout.addWidget(self._run_button)
+        left_layout.addWidget(self._run_button)
+
+        layout.addWidget(left_panel, stretch=3)
+
+        separator = QFrame(self)
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(separator)
+
+        self._state_history = ComboStates(self)
+        layout.addWidget(self._state_history, stretch=1)
 
     def _connect_signals(self):
         self._directory_selector.directory_changed.connect(self._on_directory_changed)
@@ -211,11 +235,12 @@ class ComboWLoopContainer(QWidget):
 
         self._directory_selector.set_value(self.wloop.working_directory)
 
-        for i, episode in enumerate(self._episodes):
-            episode_data = self.wloop.episodes[i]
-            episode.set_working_directory(self.wloop.working_directory)
-            episode.set_file_value(episode_data.filename)
-            episode.set_prompt(episode_data.prompt)
+        for ep in self.wloop.episodes:
+            episode_ui = self._episode_map.get(ep.id)
+            if episode_ui:
+                episode_ui.set_working_directory(self.wloop.working_directory)
+                episode_ui.set_file_value(ep.filename)
+                episode_ui.set_prompt(ep.prompt)
 
         self._syncing = False
 
@@ -229,37 +254,39 @@ class ComboWLoopContainer(QWidget):
     def _on_file_changed(self, episode_index: int, relative_path: str):
         if self._syncing:
             return
-        self.wloop.episodes[episode_index].filename = relative_path
-        self._sync_ui()
-        print(f"[WLoopContainer] episode[{episode_index}].filename={relative_path}")
+        episodes = self.wloop.episodes
+        if episode_index < len(episodes):
+            episodes[episode_index].filename = relative_path
+            self._sync_ui()
+            print(f"[WLoopContainer] episode[{episode_index}].filename={relative_path}")
 
     def _on_play_clicked(self):
-        action = self.wloop.state_machine.next_action()
-        if action in ("start_run", "continue_run"):
-            episode = self._episodes[0]
-            if episode.is_running():
-                return
+        self._play_active = True
+        instruction = self.wloop.next()
+        self._execute_instruction(instruction)
+
+    def _on_episode_finished(self):
+        if not self._play_active:
+            return
+        instruction = self.wloop.next()
+        self._execute_instruction(instruction)
+
+    def _execute_instruction(self, instruction):
+        if self._play_active:
+            self._state_history.append(instruction)
+        if instruction in self._episode_map:
             for ep in self._episodes:
                 ep.set_sm_locked(True)
             self._run_button.setEnabled(False)
+            episode = self._episode_map[instruction]
             episode.start_run()
             self.play_started.emit()
-            print(f"[WLoopContainer] Run started (action={action}, count={self.wloop.state_machine.current_count})")
-        else:
-            print("[WLoopContainer] Stop - loop limit reached")
-
-    def _on_episode_finished(self):
-        action = self.wloop.state_machine.next_action()
-        if action == "continue_run":
-            episode = self._episodes[0]
-            episode.start_run()
-            print(f"[WLoopContainer] Run completed, continuing... (count={self.wloop.state_machine.current_count})")
-        else:
+        elif instruction == "FINISHED":
+            self._play_active = False
             self._run_button.setEnabled(True)
-            self.wloop.state_machine.reset()
             for ep in self._episodes:
                 ep.set_sm_locked(False)
                 ep.set_button_enabled(True)
+            self.wloop.reset()
+            self._state_history.append(self.wloop.state)
             self.play_stopped.emit()
-            print(f"[WLoopContainer] Run completed, all loops finished (total={self.wloop.state_machine.current_count})")
-        self._sync_ui()

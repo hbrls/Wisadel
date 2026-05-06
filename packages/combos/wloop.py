@@ -1,67 +1,92 @@
 """Combo WLoop 数据类"""
 
-from dataclasses import dataclass, field
 from string import Template
-from typing import List
+
+from transitions import Machine
 
 
-@dataclass
 class Episode:
-    id: str = ""
-    filename: str = ""
-    prompt: Template = field(default_factory=lambda: Template(""))
+    def __init__(self, id: str = "", filename: str = "", prompt: Template = None, component: str = ""):
+        self.id = id
+        self.filename = filename
+        self.prompt = prompt if prompt is not None else Template("")
+        self.component = component
 
 
-@dataclass
-class WLoopStateMachine:
-    """WLoop 循环执行状态机
-
-    管理循环执行的计数和状态。
-    持有对 WLoop 的引用以读取 loop 值。
-    
-    current_count 代表"已启动的 Worker 数"（预定执行次数）。
-    """
-
-    wloop: "WLoop" = None
-    current_count: int = 0
-
-    def next_action(self) -> str:
-        """查询下一步动作，并在决定执行时预定计数
-
-        Returns:
-            "start_run": 首次执行，预定后 count = 1
-            "continue_run": 继续循环，预定后 count < loop
-            "stop": 已达上限，count >= loop
-        """
-        loop = self.wloop.loop if self.wloop else 5
-        if self.current_count >= loop:
-            return "stop"
-        self.current_count += 1
-        if self.current_count == 1:
-            return "start_run"
-        return "continue_run"
-
-    def notify_run_completed(self):
-        """通知执行完成（用于日志/显示，不增加计数）"""
-        pass
-
-    def reset(self):
-        """重置状态"""
-        self.current_count = 0
-
-
-@dataclass
 class WLoop:
     """WLoop 循环执行数据类（Domain 层）
 
-    纯业务逻辑，不涉及 UI。
+    状态机的状态：
+    - IDLE: 初始/等待状态（特殊节点，不渲染）
+    - "wloop": Episode 状态（可执行，渲染 SoloRunner）
+    - FINISHED: 完成状态（特殊节点，不渲染）
+
+    状态流转：IDLE → wloop → wloop → ... → FINISHED → IDLE
     """
 
-    working_directory: str = ""
-    episodes: List[Episode] = field(default_factory=lambda: [
-        Episode(id="wloop", filename=".agents/workflows/w-execute/WORKFLOW.md", prompt=Template("加载并执行 $filename")),
-    ])
-    loop: int = 3
+    EPISODES = [
+        Episode(
+            id="wloop",
+            filename=".agents/workflows/w-execute/WORKFLOW.md",
+            prompt=Template("加载并执行 $filename"),
+            component="WLoopSoloEpisode",
+        ),
+    ]
+    LOOP = 3
 
-    def __post_init__(self):
-        self.state_machine = WLoopStateMachine(wloop=self)
+    def __init__(self, working_directory: str = ""):
+        self.working_directory = working_directory
+        self.episodes = self.EPISODES.copy()
+        self._count = 0
+
+        """
+        State Machine:
+
+                          [next, count<LOOP]
+                                ┌────┐
+                                │    │
+                                ▼    │
+        IDLE ─────────────► wloop ─────────────► FINISHED
+          ▲                     │                      │
+          │                     │                      │
+          └───────[reset]───────┴──────────────────────┘
+
+        Transitions:
+            - next(IDLE → wloop): count=1, return "wloop"
+            - next(wloop → wloop): count+=1, return "wloop" (if count < LOOP)
+            - next(wloop → FINISHED): return "FINISHED" (if count >= LOOP)
+            - reset(any → IDLE): count=0
+        """
+        Machine(
+            model=self,
+            states=["IDLE", "wloop", "FINISHED"],
+            initial="IDLE",
+            transitions=[
+                {"trigger": "next", "source": "IDLE", "dest": "wloop"},
+                {"trigger": "next", "source": "wloop", "dest": "wloop", "conditions": "_can_continue"},
+                {"trigger": "next", "source": "wloop", "dest": "FINISHED", "conditions": "_should_finish"},
+                {"trigger": "reset", "source": "*", "dest": "IDLE"},
+            ],
+        )
+
+    def _can_continue(self) -> bool:
+        return self._count < self.LOOP
+
+    def _should_finish(self) -> bool:
+        return self._count >= self.LOOP
+
+    def next(self) -> str:
+        """触发状态转换，返回指令（当前状态）"""
+        self.trigger("next")
+        
+        if self.state == "wloop":
+            self._count += 1
+            print(f"[WLoop] Execute episode 'wloop' (count={self._count}/{self.LOOP})")
+        
+        return self.state
+
+    def reset(self) -> str:
+        """重置状态机，返回 IDLE"""
+        self._count = 0
+        self.trigger("reset")
+        return self.state
