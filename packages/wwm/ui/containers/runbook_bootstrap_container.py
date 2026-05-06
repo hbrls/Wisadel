@@ -3,31 +3,33 @@
 import os
 from string import Template
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton
+from PySide6.QtCore import Signal, Qt
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
+from qfluentwidgets import PrimaryPushButton, PushButton, ProgressRing, BodyLabel, FluentIcon as FIF, CardWidget
 
+from ui.styles import SPACING
 from runbooks.bootstrap import Bootstrap
-from ui.components.directory_selector_builder import DirectorySelectorBuilder
-from ui.components.file_selector_builder import FileSelectorBuilder
-from ui.components.solo_runner_builder import SoloRunnerBuilder
+from ui.components.working_dir_selector import WorkingDirSelector
+from ui.components.file_selector import FileSelector
 from ui.components.coder_worker import CoderWorker
 
 
-class BootstrapSoloEpisode(QWidget):
-    """FileSelector + SoloRunner 横向排列的单次执行单元
+class BootstrapSoloEpisode(CardWidget):
+    """Bootstrap 专用的 FileSelector + SoloRunner 横向排列执行单元
 
-    Episode 的 Run Button 受 dual-gate 控制：_sm_locked 和 _worker 状态。
-    Container 的状态机锁定时，Episode 的按钮被禁用；
-    解锁后根据 worker 状态恢复按钮。
+    持有唯一的执行真源：Worker、计时、ProgressRing。
+    Solo 按钮和外部 Play 都通过 start_run() 触发同一条执行链。
     """
 
-    run_finished = Signal()
     file_changed = Signal(str)
+    run_finished = Signal()
+
+    PROGRESS_RING_SIZE = 40
+    PROGRESS_SECONDS_MAX = 300
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.file_selector = FileSelectorBuilder(parent=self)
-        self.solo_runner = SoloRunnerBuilder(parent=self)
+        self.file_selector = FileSelector(parent=self)
         self._working_directory = ""
         self._file_value = ""
         self._prompt = Template("")
@@ -38,108 +40,118 @@ class BootstrapSoloEpisode(QWidget):
 
     def _setup_ui(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setContentsMargins(SPACING["md"], SPACING["md"], SPACING["md"], SPACING["md"])
+        layout.setSpacing(SPACING["sm"])
 
-        file_layout = self.file_selector.build(
-            parent=self,
-            button_text="选择文件",
-            placeholder_text="选择文件",
-        )
-        layout.addLayout(file_layout)
+        layout.addWidget(self.file_selector, stretch=1)
 
-        runner_layout = self.solo_runner.build(
-            working_directory="",
-            session_ids=[],
-            session_offset=0,
-            prompt=Template(""),
-            button_text="Run",
-            default_value="--:--",
-        )
-        layout.addLayout(runner_layout)
+        solo_runner_layout = QHBoxLayout()
+        solo_runner_layout.setContentsMargins(0, 0, 0, 0)
+        solo_runner_layout.setSpacing(SPACING["sm"])
+
+        ring_container = QWidget(self)
+        ring_container.setFixedSize(self.PROGRESS_RING_SIZE, self.PROGRESS_RING_SIZE)
+        ring_container.setStyleSheet("background: transparent; border: none;")
+
+        self._progress_ring = ProgressRing(ring_container)
+        self._progress_ring.setFixedSize(self.PROGRESS_RING_SIZE, self.PROGRESS_RING_SIZE)
+        self._progress_ring.setValue(0)
+
+        self._progress_label = BodyLabel("0s", ring_container)
+        self._progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._progress_label.setGeometry(0, 0, self.PROGRESS_RING_SIZE, self.PROGRESS_RING_SIZE)
+
+        solo_runner_layout.addWidget(ring_container)
+
+        self._run_button = PushButton("Solo", self)
+        self._run_button.setFixedSize(100, 33)
+        solo_runner_layout.addWidget(self._run_button)
+
+        layout.addLayout(solo_runner_layout)
 
     def _connect_signals(self):
-        """连接 SoloRunner 和 FileSelector 信号"""
-        self.solo_runner.run_requested.connect(self._on_run_requested)
         self.file_selector.file_changed.connect(self.file_changed.emit)
+        self._run_button.clicked.connect(self._on_solo_clicked)
 
     def set_working_directory(self, directory: str):
-        """设置工作目录"""
         self._working_directory = directory
-        self.solo_runner.set_working_directory(directory)
 
     def set_file_value(self, value: str):
-        """设置关联的文件值（相对路径），同步 UI"""
         self._file_value = value
         self.file_selector.set_value(value)
         self.file_selector.set_base_directory(self._working_directory)
 
     def set_prompt(self, prompt: Template):
-        """设置 prompt 模板"""
         self._prompt = prompt
 
     def get_prompt(self) -> str:
-        """获取渲染后的 prompt"""
         return self._prompt.substitute(filename=self._file_value)
 
     def get_cwd(self) -> str:
-        """获取工作目录"""
         return self._working_directory
 
-    def set_sm_locked(self, locked: bool):
-        """设置状态机锁定：locked 时禁用按钮，unlocked 时根据 worker 状态恢复"""
-        self._sm_locked = locked
-        if locked:
-            self.solo_runner.set_button_enabled(False)
-        else:
-            self.solo_runner.set_button_enabled(self._worker is None)
+    def is_running(self) -> bool:
+        return self._worker is not None
 
-    def set_button_enabled(self, enabled: bool):
-        """设置按钮启用状态，受 _sm_locked 约束"""
-        if self._sm_locked:
-            self.solo_runner.set_button_enabled(False)
-        else:
-            self.solo_runner.set_button_enabled(enabled)
-
-    def _on_run_requested(self):
-        """执行按钮事件处理：创建 CoderWorker 并启动"""
-        if self._sm_locked:
+    def start_run(self):
+        if self._worker is not None:
             return
         prompt = self._prompt.substitute(filename=self._file_value)
         cwd = self._working_directory
         print(f"[BootstrapSoloEpisode] run: cwd={cwd}, prompt={prompt}")
 
-        self.solo_runner.set_button_enabled(False)
+        self._run_button.setEnabled(False)
+        self._progress_ring.setValue(0)
+        self._progress_label.setText("0s")
 
         self._worker = CoderWorker(cwd=cwd, prompt=prompt, parent=self)
-        self._worker.finished.connect(self._on_worker_finished)
+        self._worker.finished.connect(self._on_worker_thread_finished)
         self._worker.error.connect(self._on_worker_error)
+        self._worker.elapsed_changed.connect(self._on_elapsed_changed)
         self._worker.start()
 
-    def _on_worker_finished(self):
-        """CoderWorker 成功完成"""
-        self.solo_runner.set_status(0, "Done")
-        self._worker = None
-        if not self._sm_locked:
-            self.solo_runner.set_button_enabled(True)
-        self.run_finished.emit()
+    def _on_solo_clicked(self):
+        if self._sm_locked:
+            return
+        self.start_run()
 
     def _on_worker_error(self, message: str):
-        """CoderWorker 执行出错"""
         print(f"[BootstrapSoloEpisode] error: {message}")
+
+    def _on_worker_thread_finished(self):
         self._worker = None
+        self._progress_ring.setValue(0)
+        self._progress_label.setText("0s")
         if not self._sm_locked:
-            self.solo_runner.set_button_enabled(True)
+            self._run_button.setEnabled(True)
         self.run_finished.emit()
+
+    def _on_elapsed_changed(self, seconds: int):
+        percent = min(int(seconds / self.PROGRESS_SECONDS_MAX * 100), 100)
+        self._progress_ring.setValue(percent)
+        self._progress_label.setText(f"{seconds}s")
+
+    def set_sm_locked(self, locked: bool):
+        self._sm_locked = locked
+        if locked:
+            self._run_button.setEnabled(False)
+        else:
+            self._run_button.setEnabled(self._worker is None)
+
+    def set_button_enabled(self, enabled: bool):
+        if self._sm_locked:
+            self._run_button.setEnabled(False)
+        else:
+            self._run_button.setEnabled(enabled)
 
 
 class RunbookBootstrapContainer(QWidget):
-    """Runbook Bootstrap Container 组件（UI 层）
+    """Runbook Bootstrap Container 组件
 
-    状态控制器：持有 Bootstrap 作为单一状态源，通过 Signal 接收子组件事件，
-    通过 _sync_ui() 统一推送状态到所有子组件。
-
-    Container 的 Run Button 控制顺序执行（lens-ceo-1 → lens-engineer-1 → lens-ceo-2 → lens-engineer-2）。
+    Container 只负责编排：
+    - Play 按钮触发当前 Episode 的 start_run()，不自己创建 Worker。
+    - 通过 Episode 的 run_finished 信号决定是否继续下一轮。
+    - 不持有 Worker / Timer / Progress 等执行态。
     """
 
     def __init__(self, parent=None):
@@ -147,10 +159,8 @@ class RunbookBootstrapContainer(QWidget):
         self.bootstrap = Bootstrap()
         self._syncing = False
         self._directory_selector = None
-        self._solo_episodes = {}
-        self._episode_list = []
+        self._episodes = []
         self._run_button = None
-        self._worker = None
         self._setup_ui()
         self._connect_signals()
         if not self.bootstrap.working_directory:
@@ -166,47 +176,42 @@ class RunbookBootstrapContainer(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self._directory_selector = DirectorySelectorBuilder(parent=self)
-        dir_layout = self._directory_selector.build(
+        self._directory_selector = WorkingDirSelector(
             parent=self,
             button_text="选择目录",
             placeholder_text="选择工作目录",
         )
-        layout.addLayout(dir_layout)
 
-        for episode in self.bootstrap.episodes:
-            solo = BootstrapSoloEpisode(parent=self)
-            layout.addWidget(solo)
-            self._solo_episodes[episode.id] = solo
-            self._episode_list.append(solo)
+        layout.addWidget(self._directory_selector)
 
-        self._run_button = QPushButton("Run")
-        self._run_button.setFixedSize(100, 36)
+        for episode_data in self.bootstrap.episodes:
+            episode = BootstrapSoloEpisode(parent=self)
+            layout.addWidget(episode)
+            self._episodes.append(episode)
+
+        self._run_button = PrimaryPushButton(FIF.PLAY, "", self)
+        self._run_button.setFixedHeight(33)
         layout.addWidget(self._run_button)
 
     def _connect_signals(self):
         self._directory_selector.directory_changed.connect(self._on_directory_changed)
-
-        for i, episode in enumerate(self.bootstrap.episodes):
-            solo = self._solo_episodes[episode.id]
-            solo.file_changed.connect(
-                lambda path, idx=i: self._on_file_changed(idx, path)
-            )
-            solo.run_finished.connect(self._on_run_finished)
-
-        self._run_button.clicked.connect(self._on_run_requested)
+        for i, episode in enumerate(self._episodes):
+            episode.file_changed.connect(lambda path, idx=i: self._on_file_changed(idx, path))
+            episode.run_finished.connect(self._on_episode_finished)
+        self._run_button.clicked.connect(self._on_play_clicked)
 
     def _sync_ui(self):
         self._syncing = True
 
         self._directory_selector.set_value(self.bootstrap.working_directory)
 
-        for episode in self.bootstrap.episodes:
-            solo = self._solo_episodes[episode.id]
-            solo.set_working_directory(self.bootstrap.working_directory)
-            solo.set_file_value(episode.filename)
-            solo.set_prompt(episode.prompt)
+        for i, episode in enumerate(self._episodes):
+            episode_data = self.bootstrap.episodes[i]
+            episode.set_working_directory(self.bootstrap.working_directory)
+            episode.set_file_value(episode_data.filename)
+            episode.set_prompt(episode_data.prompt)
 
         self._syncing = False
 
@@ -215,71 +220,42 @@ class RunbookBootstrapContainer(QWidget):
             return
         self.bootstrap.working_directory = path
         self._sync_ui()
-        print(f"[RunbookBootstrapContainer] working_directory={self.bootstrap.working_directory}")
+        print(f"[BootstrapContainer] working_directory={self.bootstrap.working_directory}")
 
-    def _on_file_changed(self, episode_index: int, absolute_path: str):
+    def _on_file_changed(self, episode_index: int, relative_path: str):
         if self._syncing:
             return
-        relative = self._get_relative_path(absolute_path)
-        self.bootstrap.episodes[episode_index].filename = relative
+        self.bootstrap.episodes[episode_index].filename = relative_path
         self._sync_ui()
-        print(f"[RunbookBootstrapContainer] episode[{episode_index}].filename={relative}")
+        print(f"[BootstrapContainer] episode[{episode_index}].filename={relative_path}")
 
-    def _on_run_requested(self):
-        """Container 的 Run Button 点击：查询状态机决定是否执行"""
+    def _on_play_clicked(self):
         action = self.bootstrap.state_machine.next_action()
         if action in ("start_run", "continue_run"):
-            self._start_worker()
-            print(f"[RunbookBootstrapContainer] Run started (action={action}, phase={self.bootstrap.state_machine.current_phase})")
+            episode_index = self.bootstrap.state_machine.get_current_episode_index()
+            episode = self._episodes[episode_index]
+            if episode.is_running():
+                return
+            for ep in self._episodes:
+                ep.set_sm_locked(True)
+            self._run_button.setEnabled(False)
+            episode.start_run()
+            print(f"[BootstrapContainer] Run started (action={action}, phase={self.bootstrap.state_machine.current_phase})")
         else:
-            print("[RunbookBootstrapContainer] Stop - all episodes completed")
+            print("[BootstrapContainer] Stop - all episodes completed")
 
-    def _start_worker(self):
-        """创建 Worker 并启动当前 episode"""
-        episode_index = self.bootstrap.state_machine.get_current_episode_index()
-        episode = self._episode_list[episode_index]
-        prompt = episode.get_prompt()
-        cwd = episode.get_cwd()
-
-        for ep in self._episode_list:
-            ep.set_sm_locked(True)
-
-        self._run_button.setEnabled(False)
-        for ep in self._episode_list:
-            ep.set_button_enabled(False)
-
-        self._worker = CoderWorker(cwd=cwd, prompt=prompt, parent=self)
-        self._worker.finished.connect(self._on_worker_finished)
-        self._worker.error.connect(self._on_worker_error)
-        self._worker.start()
-
-    def _on_worker_finished(self):
-        """Worker 成功完成：查询状态机决定是否继续执行下一个 episode"""
-        self._worker = None
+    def _on_episode_finished(self):
         action = self.bootstrap.state_machine.next_action()
         if action == "continue_run":
-            self._start_worker()
-            print(f"[RunbookBootstrapContainer] Run completed, continuing... (phase={self.bootstrap.state_machine.current_phase})")
+            episode_index = self.bootstrap.state_machine.get_current_episode_index()
+            episode = self._episodes[episode_index]
+            episode.start_run()
+            print(f"[BootstrapContainer] Run completed, continuing... (phase={self.bootstrap.state_machine.current_phase})")
         else:
-            self._enable_buttons()
-            print(f"[RunbookBootstrapContainer] Run completed, all episodes finished (phase={self.bootstrap.state_machine.current_phase})")
-        self._sync_ui()
-
-    def _on_worker_error(self, message: str):
-        """Worker 执行出错"""
-        print(f"[RunbookBootstrapContainer] error: {message}")
-        self._worker = None
-        self._enable_buttons()
-        print(f"[RunbookBootstrapContainer] Run finished with error (phase={self.bootstrap.state_machine.current_phase})")
-
-    def _enable_buttons(self):
-        """重新启用所有按钮并重置状态机"""
-        self._run_button.setEnabled(True)
-        self.bootstrap.state_machine.reset()
-        for ep in self._episode_list:
-            ep.set_sm_locked(False)
-            ep.set_button_enabled(True)
-
-    def _on_run_finished(self):
-        print("[RunbookBootstrapContainer] Run finished")
+            self._run_button.setEnabled(True)
+            self.bootstrap.state_machine.reset()
+            for ep in self._episodes:
+                ep.set_sm_locked(False)
+                ep.set_button_enabled(True)
+            print(f"[BootstrapContainer] Run completed, all episodes finished (phase={self.bootstrap.state_machine.current_phase})")
         self._sync_ui()

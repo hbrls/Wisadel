@@ -61,7 +61,7 @@ class WLoop:
     episodes: List[Episode] = field(default_factory=lambda: [
         Episode(id="wloop", filename=".agents/workflows/w-execute/WORKFLOW.md", prompt=Template("加载并执行 $filename")),
     ])
-    loop: int = 10
+    loop: int = 3
 
     def __post_init__(self):
         self.state_machine = WLoopStateMachine(wloop=self)

@@ -3,22 +3,23 @@
 import os
 from string import Template
 
-from PySide6.QtCore import Signal, Qt, QTimer
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSpacerItem, QSizePolicy
-from qfluentwidgets import PrimaryPushButton, PushButton, ProgressRing, BodyLabel, FluentIcon as FIF
+from PySide6.QtCore import Signal, Qt
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
+from qfluentwidgets import PrimaryPushButton, PushButton, ProgressRing, BodyLabel, FluentIcon as FIF, CardWidget
 
-from ui.styles import COLORS, SPACING
+from ui.styles import SPACING
 
 from runbooks.wloop import WLoop
-from ui.components.directory_selector import DirectorySelector
+from ui.components.working_dir_selector import WorkingDirSelector
 from ui.components.file_selector import FileSelector
 from ui.components.coder_worker import CoderWorker
 
 
-class WLoopSoloEpisode(QWidget):
-    """WLoop 专用的 FileSelector + ProgressRing 纵向排列执行单元
-    
-    状态展示使用 ProgressRing，基于 Worker elapsed_changed，5 分钟 = 100%。
+class WLoopSoloEpisode(CardWidget):
+    """WLoop 专用的 FileSelector + SoloRunner 横向排列执行单元
+
+    持有唯一的执行真源：Worker、计时、ProgressRing。
+    Solo 按钮和外部 Play 都通过 start_run() 触发同一条执行链。
     """
 
     file_changed = Signal(str)
@@ -39,22 +40,15 @@ class WLoopSoloEpisode(QWidget):
         self._connect_signals()
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(SPACING["md"], SPACING["md"], SPACING["md"], SPACING["md"])
         layout.setSpacing(SPACING["sm"])
 
-        layout.addWidget(self.file_selector)
+        layout.addWidget(self.file_selector, stretch=1)
 
-        status_layout = QHBoxLayout()
-        status_layout.setContentsMargins(0, 0, 0, 0)
-        status_layout.setSpacing(SPACING["sm"])
-
-        self._run_button = PushButton("Solo", self)
-        self._run_button.setFixedSize(100, 33)
-        status_layout.addWidget(self._run_button)
-
-        spacer = QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        status_layout.addSpacerItem(spacer)
+        solo_runner_layout = QHBoxLayout()
+        solo_runner_layout.setContentsMargins(0, 0, 0, 0)
+        solo_runner_layout.setSpacing(SPACING["sm"])
 
         ring_container = QWidget(self)
         ring_container.setFixedSize(self.PROGRESS_RING_SIZE, self.PROGRESS_RING_SIZE)
@@ -68,13 +62,17 @@ class WLoopSoloEpisode(QWidget):
         self._progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._progress_label.setGeometry(0, 0, self.PROGRESS_RING_SIZE, self.PROGRESS_RING_SIZE)
 
-        status_layout.addWidget(ring_container)
+        solo_runner_layout.addWidget(ring_container)
 
-        layout.addLayout(status_layout)
+        self._run_button = PushButton("Solo", self)
+        self._run_button.setFixedSize(100, 33)
+        solo_runner_layout.addWidget(self._run_button)
+
+        layout.addLayout(solo_runner_layout)
 
     def _connect_signals(self):
         self.file_selector.file_changed.connect(self.file_changed.emit)
-        self._run_button.clicked.connect(self._on_run_requested)
+        self._run_button.clicked.connect(self._on_solo_clicked)
 
     def set_working_directory(self, directory: str):
         self._working_directory = directory
@@ -93,15 +91,11 @@ class WLoopSoloEpisode(QWidget):
     def get_cwd(self) -> str:
         return self._working_directory
 
-    def set_sm_locked(self, locked: bool):
-        self._sm_locked = locked
-        if locked:
-            self._run_button.setEnabled(False)
-        else:
-            self._run_button.setEnabled(self._worker is None)
+    def is_running(self) -> bool:
+        return self._worker is not None
 
-    def _on_run_requested(self):
-        if self._sm_locked:
+    def start_run(self):
+        if self._worker is not None:
             return
         prompt = self._prompt.substitute(filename=self._file_value)
         cwd = self._working_directory
@@ -112,20 +106,23 @@ class WLoopSoloEpisode(QWidget):
         self._progress_label.setText("0s")
 
         self._worker = CoderWorker(cwd=cwd, prompt=prompt, parent=self)
-        self._worker.finished.connect(self._on_worker_finished)
+        self._worker.finished.connect(self._on_worker_thread_finished)
         self._worker.error.connect(self._on_worker_error)
         self._worker.elapsed_changed.connect(self._on_elapsed_changed)
         self._worker.start()
 
-    def _on_worker_finished(self):
-        self._worker = None
-        if not self._sm_locked:
-            self._run_button.setEnabled(True)
-        self.run_finished.emit()
+    def _on_solo_clicked(self):
+        if self._sm_locked:
+            return
+        self.start_run()
 
     def _on_worker_error(self, message: str):
         print(f"[WLoopSoloEpisode] error: {message}")
+
+    def _on_worker_thread_finished(self):
         self._worker = None
+        self._progress_ring.setValue(0)
+        self._progress_label.setText("0s")
         if not self._sm_locked:
             self._run_button.setEnabled(True)
         self.run_finished.emit()
@@ -134,6 +131,13 @@ class WLoopSoloEpisode(QWidget):
         percent = min(int(seconds / self.PROGRESS_SECONDS_MAX * 100), 100)
         self._progress_ring.setValue(percent)
         self._progress_label.setText(f"{seconds}s")
+
+    def set_sm_locked(self, locked: bool):
+        self._sm_locked = locked
+        if locked:
+            self._run_button.setEnabled(False)
+        else:
+            self._run_button.setEnabled(self._worker is None)
 
     def set_button_enabled(self, enabled: bool):
         if self._sm_locked:
@@ -145,14 +149,14 @@ class WLoopSoloEpisode(QWidget):
 class RunbookWLoopContainer(QWidget):
     """Runbook WLoop Container 组件
 
-    Container 持有：
-    - self.wloop = WLoop()（Domain 数据）
-    - self._episodes = []（多个 Episode）
-    - self._run_button（Container 的 Run Button）
-    - self._worker（CoderWorker）
-
-    Container 的 Run Button 控制循环执行。
+    Container 只负责编排：
+    - Play 按钮触发当前 Episode 的 start_run()，不自己创建 Worker。
+    - 通过 Episode 的 run_finished 信号决定是否继续下一轮。
+    - 不持有 Worker / Timer / Progress 等执行态。
     """
+
+    play_started = Signal()
+    play_stopped = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -161,7 +165,6 @@ class RunbookWLoopContainer(QWidget):
         self._directory_selector = None
         self._episodes = []
         self._run_button = None
-        self._worker = None
         self._setup_ui()
         self._connect_signals()
         if not self.wloop.working_directory:
@@ -177,12 +180,14 @@ class RunbookWLoopContainer(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self._directory_selector = DirectorySelector(
+        self._directory_selector = WorkingDirSelector(
             parent=self,
             button_text="选择目录",
             placeholder_text="选择工作目录",
         )
+
         layout.addWidget(self._directory_selector)
 
         for episode_data in self.wloop.episodes:
@@ -190,15 +195,16 @@ class RunbookWLoopContainer(QWidget):
             layout.addWidget(episode)
             self._episodes.append(episode)
 
-        self._run_button = PrimaryPushButton(FIF.PLAY, "")
-        self._run_button.setStyleSheet(f"PrimaryPushButton {{ background-color: {COLORS['fluent_primary']}; border: none; border-radius: 4px; }}" )
+        self._run_button = PrimaryPushButton(FIF.PLAY, "", self)
+        self._run_button.setFixedHeight(33)
         layout.addWidget(self._run_button)
 
     def _connect_signals(self):
         self._directory_selector.directory_changed.connect(self._on_directory_changed)
         for i, episode in enumerate(self._episodes):
             episode.file_changed.connect(lambda path, idx=i: self._on_file_changed(idx, path))
-        self._run_button.clicked.connect(self._on_run_requested)
+            episode.run_finished.connect(self._on_episode_finished)
+        self._run_button.clicked.connect(self._on_play_clicked)
 
     def _sync_ui(self):
         self._syncing = True
@@ -227,52 +233,33 @@ class RunbookWLoopContainer(QWidget):
         self._sync_ui()
         print(f"[WLoopContainer] episode[{episode_index}].filename={relative_path}")
 
-    def _on_run_requested(self):
-        """Container 的 Run Button 点击：查询状态机决定是否执行"""
+    def _on_play_clicked(self):
         action = self.wloop.state_machine.next_action()
         if action in ("start_run", "continue_run"):
-            self._start_worker()
+            episode = self._episodes[0]
+            if episode.is_running():
+                return
+            for ep in self._episodes:
+                ep.set_sm_locked(True)
+            self._run_button.setEnabled(False)
+            episode.start_run()
+            self.play_started.emit()
             print(f"[WLoopContainer] Run started (action={action}, count={self.wloop.state_machine.current_count})")
         else:
             print("[WLoopContainer] Stop - loop limit reached")
 
-    def _start_worker(self):
-        episode = self._episodes[0]
-        prompt = episode.get_prompt()
-        cwd = episode.get_cwd()
-
-        for ep in self._episodes:
-            ep.set_sm_locked(True)
-
-        self._run_button.setEnabled(False)
-        for ep in self._episodes:
-            ep.set_button_enabled(False)
-
-        self._worker = CoderWorker(cwd=cwd, prompt=prompt, parent=self)
-        self._worker.finished.connect(self._on_worker_finished)
-        self._worker.error.connect(self._on_worker_error)
-        self._worker.start()
-
-    def _on_worker_finished(self):
-        self._worker = None
+    def _on_episode_finished(self):
         action = self.wloop.state_machine.next_action()
         if action == "continue_run":
-            self._start_worker()
+            episode = self._episodes[0]
+            episode.start_run()
             print(f"[WLoopContainer] Run completed, continuing... (count={self.wloop.state_machine.current_count})")
         else:
-            self._enable_buttons()
+            self._run_button.setEnabled(True)
+            self.wloop.state_machine.reset()
+            for ep in self._episodes:
+                ep.set_sm_locked(False)
+                ep.set_button_enabled(True)
+            self.play_stopped.emit()
             print(f"[WLoopContainer] Run completed, all loops finished (total={self.wloop.state_machine.current_count})")
         self._sync_ui()
-
-    def _on_worker_error(self, message: str):
-        print(f"[WLoopContainer] error: {message}")
-        self._worker = None
-        self._enable_buttons()
-        print(f"[WLoopContainer] Run finished with error (total={self.wloop.state_machine.current_count})")
-
-    def _enable_buttons(self):
-        self._run_button.setEnabled(True)
-        self.wloop.state_machine.reset()
-        for ep in self._episodes:
-            ep.set_sm_locked(False)
-            ep.set_button_enabled(True)

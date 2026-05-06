@@ -20,7 +20,7 @@ from uuid import uuid4
 from loguru import logger
 
 from coders._command_coder import _CommandCoder
-from coders.platform_utils import is_linux, is_macos, is_windows
+from coders.platform_utils import is_macos, is_windows
 
 
 class KiloCode(_CommandCoder):
@@ -50,7 +50,16 @@ class KiloCode(_CommandCoder):
             "- 你的知识截止日期是什么时候？"
         )
         cwd = tempfile.gettempdir()
-        args = ["pwsh", "-Command", f"kilocode run -- '{prompt.strip()}'"]
+        escaped_prompt = prompt.strip().replace("'", "'\"'\"'")
+        command = f"kilocode run --auto -- '{escaped_prompt}'"
+
+        if is_windows():
+            args = ["pwsh", "-Command", command]
+        elif is_macos():
+            args = ["bash", "-c", command]
+        else:
+            logger.error(f"不支持的平台: {sys.platform}")
+            return
 
         result = _CommandCoder.execute_command(cwd, args)
 
@@ -213,10 +222,13 @@ class KiloCode(_CommandCoder):
         Returns:
             成功时返回 subprocess.CompletedProcess 对象，失败时返回 None
         """
+        escaped_prompt = prompt.strip().replace("'", "'\"'\"'")
+        command = f"kilocode run --auto -- '{escaped_prompt}'"
+
         if is_windows():
-            args = ["pwsh", "-Command", f"kilocode run -- '{prompt.strip()}'"]
+            args = ["pwsh", "-Command", command]
         elif is_macos():
-            args = ["bash", "-c", f"kilocode run -- '{prompt.strip()}'"]
+            args = ["bash", "-c", command]
         else:
             raise OSError("不支持的平台")
 

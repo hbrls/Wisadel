@@ -1,82 +1,81 @@
-"""
-Main Window for WWM Desktop Client
-
-主窗口组件，包含应用的主要界面布局和功能区域。
-"""
-
 from PySide6.QtCore import Signal, Slot
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QStatusBar
-from qfluentwidgets import FluentWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget, QStatusBar
+from qfluentwidgets import FluentWindow, FluentIcon as FIF, NavigationItemPosition, InfoBadge, InfoBadgePosition
 
-from runbooks.task import Task
-from ui.containers.runbook_task_container import RunbookTaskContainer
-from ui.containers.runbook_wloop_container import RunbookWLoopContainer
-from ui.containers.runbook_bootstrap_container import RunbookBootstrapContainer
+from ui.pages.bootstrap_page import BootstrapPage
+from ui.pages.task_page import TaskPage
+from ui.pages.wloop_page import WLoopPage
+from ui.pages.account_settings_page import AccountPage, SettingsPage
 
 
-class MainWindow(FluentWidget):
-    """Main application window."""
-
+class MainWindow(FluentWindow):
     window_closing = Signal()
+    _wloop_badge = None
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.task = Task()
+        self.navigationInterface.setReturnButtonVisible(False)
         self._setup_window()
-        self._setup_ui()
+        self._restructure_content_area()
+        self._setup_pages()
         self._setup_connections()
 
     def _setup_window(self):
         self.setWindowTitle("维维美")
-        self.setMinimumSize(900, 400)
+        self.setMinimumSize(900, 500)
         self.setMicaEffectEnabled(False)
 
-    def _setup_ui(self):
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, self.titleBar.height(), 0, 0)
-        root.setSpacing(0)
+    def _restructure_content_area(self):
+        self.widgetLayout.removeWidget(self.stackedWidget)
 
-        red_line = QWidget()
-        red_line.setFixedHeight(4)
-        red_line.setStyleSheet("background-color: red;")
-        root.addWidget(red_line)
+        content_widget = QWidget()
+        content_vbox = QVBoxLayout(content_widget)
+        content_vbox.setContentsMargins(0, 0, 0, 0)
+        content_vbox.setSpacing(0)
 
-        panels = QHBoxLayout()
-        panels.setContentsMargins(0, 0, 0, 0)
-        panels.setSpacing(0)
-
-        self.bootstrap_panel = QWidget()
-        self.bootstrap_panel.setStyleSheet("border: 3px solid green;")
-        bootstrap_layout = QVBoxLayout(self.bootstrap_panel)
-
-        self.bootstrap_container = RunbookBootstrapContainer(self)
-        bootstrap_layout.addWidget(self.bootstrap_container)
-
-        panels.addWidget(self.bootstrap_panel, stretch=2)
-
-        self.left_panel = QWidget()
-        self.left_panel.setStyleSheet("border: 3px solid red;")
-        left_layout = QVBoxLayout(self.left_panel)
-
-        self.runbook_container = RunbookTaskContainer(self.task, self)
-        left_layout.addWidget(self.runbook_container)
-
-        panels.addWidget(self.left_panel, stretch=2)
-
-        self.right_panel = QWidget()
-        self.right_panel.setStyleSheet("border: 3px solid blue;")
-        right_layout = QVBoxLayout(self.right_panel)
-
-        self.wloop_container = RunbookWLoopContainer(self)
-        right_layout.addWidget(self.wloop_container)
-
-        panels.addWidget(self.right_panel, stretch=3)
-
-        root.addLayout(panels)
+        content_vbox.addWidget(self.stackedWidget, stretch=1)
 
         self.status_bar = QStatusBar()
         self.status_bar.showMessage("Ready")
-        root.addWidget(self.status_bar)
+        content_vbox.addWidget(self.status_bar)
+
+        self.widgetLayout.addWidget(content_widget)
+
+    def _setup_pages(self):
+        self.bootstrap_page = BootstrapPage(self)
+        self.addSubInterface(
+            self.bootstrap_page, FIF.APPLICATION, "Bootstrap",
+            position=NavigationItemPosition.TOP,
+        )
+
+        self.task_page = TaskPage(self)
+        self.addSubInterface(
+            self.task_page, FIF.CHECKBOX, "Task",
+            position=NavigationItemPosition.TOP,
+        )
+
+        self.wloop_page = WLoopPage(self)
+        self.addSubInterface(
+            self.wloop_page, FIF.SYNC, "WLoop",
+            position=NavigationItemPosition.TOP,
+        )
+
+        self.wloop_page.wloop_container.play_started.connect(self._show_wloop_badge)
+        self.wloop_page.wloop_container.play_stopped.connect(self._hide_wloop_badge)
+
+        self.account_page = AccountPage(self)
+        self.addSubInterface(
+            self.account_page, FIF.PEOPLE, "Account",
+            position=NavigationItemPosition.BOTTOM,
+        )
+
+        self.settings_page = SettingsPage(self)
+        self.addSubInterface(
+            self.settings_page, FIF.SETTING, "Settings",
+            position=NavigationItemPosition.BOTTOM,
+        )
+
+        self.switchTo(self.bootstrap_page)
 
     def _setup_connections(self):
         self.window_closing.connect(self._on_closing)
@@ -87,3 +86,19 @@ class MainWindow(FluentWidget):
 
     def update_status(self, message: str):
         self.status_bar.showMessage(message)
+
+    def _show_wloop_badge(self):
+        nav_widget = self.navigationInterface.widget("WLoopPage")
+        if self._wloop_badge:
+            self._wloop_badge.show()
+        else:
+            self._wloop_badge = InfoBadge.success(
+                "1", 
+                self.navigationInterface.panel,
+                nav_widget, 
+                InfoBadgePosition.NAVIGATION_ITEM
+            )
+
+    def _hide_wloop_badge(self):
+        if self._wloop_badge:
+            self._wloop_badge.hide()
