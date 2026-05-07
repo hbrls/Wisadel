@@ -4,7 +4,7 @@ import os
 from string import Template
 
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame
 from qfluentwidgets import PrimaryPushButton, PushButton, ProgressRing, BodyLabel, FluentIcon as FIF, CardWidget
 
 from ui.styles import SPACING
@@ -12,6 +12,7 @@ from combos.bootstrap import Bootstrap
 from ui.components.working_dir_selector import WorkingDirSelector
 from ui.components.file_selector import FileSelector
 from ui.components.coder_worker import CoderWorker
+from ui.components.combo_states import ComboStates
 
 
 class BootstrapSoloEpisode(CardWidget):
@@ -27,8 +28,9 @@ class BootstrapSoloEpisode(CardWidget):
     PROGRESS_RING_SIZE = 40
     PROGRESS_SECONDS_MAX = 300
 
-    def __init__(self, parent=None):
+    def __init__(self, episode_id: str, parent=None):
         super().__init__(parent)
+        self.episode_id = episode_id
         self.file_selector = FileSelector(parent=self)
         self._working_directory = ""
         self._file_value = ""
@@ -148,24 +150,32 @@ class BootstrapSoloEpisode(CardWidget):
 class ComboBootstrapContainer(QWidget):
     """Combo Bootstrap Container 组件
 
-    Container 只负责编排：
-    - Play 按钮触发当前 Episode 的 start_run()，不自己创建 Worker。
-    - 通过 Episode 的 run_finished 信号决定是否继续下一轮。
-    - 不持有 Worker / Timer / Progress 等执行态。
+    Container 只负责渲染和执行指令：
+    - 渲染：foreach ep in Model.episodes, if ep.component == "BootstrapSoloEpisode", render BootstrapSoloEpisode
+    - 执行：Model.next() 返回指令，Container 执行
+
+    状态机控制！Container 不决策，只执行指令。
     """
+
+    play_started = Signal()
+    play_stopped = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.bootstrap = Bootstrap()
+        self._play_active = False
         self._syncing = False
         self._directory_selector = None
         self._episodes = []
+        self._episode_map = {}
         self._run_button = None
+        self._state_history = None
         self._setup_ui()
         self._connect_signals()
         if not self.bootstrap.working_directory:
             self.bootstrap.working_directory = os.path.expanduser("~")
         self._sync_ui()
+        self._state_history.append(self.bootstrap.state)
 
     def _get_relative_path(self, absolute_path: str) -> str:
         if self.bootstrap.working_directory and absolute_path.startswith(self.bootstrap.working_directory):
@@ -173,10 +183,15 @@ class ComboBootstrapContainer(QWidget):
         return absolute_path
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setSpacing(SPACING["md"])
+
+        left_panel = QWidget(self)
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(8)
+        left_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self._directory_selector = WorkingDirSelector(
             parent=self,
@@ -184,16 +199,28 @@ class ComboBootstrapContainer(QWidget):
             placeholder_text="选择工作目录",
         )
 
-        layout.addWidget(self._directory_selector)
+        left_layout.addWidget(self._directory_selector)
 
-        for episode_data in self.bootstrap.episodes:
-            episode = BootstrapSoloEpisode(parent=self)
-            layout.addWidget(episode)
-            self._episodes.append(episode)
+        for ep in self.bootstrap.episodes:
+            if ep.component == "BootstrapSoloEpisode":
+                episode_ui = BootstrapSoloEpisode(episode_id=ep.id, parent=self)
+                left_layout.addWidget(episode_ui)
+                self._episodes.append(episode_ui)
+                self._episode_map[ep.id] = episode_ui
 
         self._run_button = PrimaryPushButton(FIF.PLAY, "", self)
         self._run_button.setFixedHeight(33)
-        layout.addWidget(self._run_button)
+        left_layout.addWidget(self._run_button)
+
+        layout.addWidget(left_panel, stretch=3)
+
+        separator = QFrame(self)
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(separator)
+
+        self._state_history = ComboStates(self)
+        layout.addWidget(self._state_history, stretch=1)
 
     def _connect_signals(self):
         self._directory_selector.directory_changed.connect(self._on_directory_changed)
@@ -207,11 +234,12 @@ class ComboBootstrapContainer(QWidget):
 
         self._directory_selector.set_value(self.bootstrap.working_directory)
 
-        for i, episode in enumerate(self._episodes):
-            episode_data = self.bootstrap.episodes[i]
-            episode.set_working_directory(self.bootstrap.working_directory)
-            episode.set_file_value(episode_data.filename)
-            episode.set_prompt(episode_data.prompt)
+        for ep in self.bootstrap.episodes:
+            episode_ui = self._episode_map.get(ep.id)
+            if episode_ui:
+                episode_ui.set_working_directory(self.bootstrap.working_directory)
+                episode_ui.set_file_value(ep.filename)
+                episode_ui.set_prompt(ep.prompt)
 
         self._syncing = False
 
@@ -225,37 +253,39 @@ class ComboBootstrapContainer(QWidget):
     def _on_file_changed(self, episode_index: int, relative_path: str):
         if self._syncing:
             return
-        self.bootstrap.episodes[episode_index].filename = relative_path
-        self._sync_ui()
-        print(f"[BootstrapContainer] episode[{episode_index}].filename={relative_path}")
+        episodes = self.bootstrap.episodes
+        if episode_index < len(episodes):
+            episodes[episode_index].filename = relative_path
+            self._sync_ui()
+            print(f"[BootstrapContainer] episode[{episode_index}].filename={relative_path}")
 
     def _on_play_clicked(self):
-        action = self.bootstrap.state_machine.next_action()
-        if action in ("start_run", "continue_run"):
-            episode_index = self.bootstrap.state_machine.get_current_episode_index()
-            episode = self._episodes[episode_index]
-            if episode.is_running():
-                return
+        self._play_active = True
+        instruction = self.bootstrap.next()
+        self._execute_instruction(instruction)
+
+    def _on_episode_finished(self):
+        if not self._play_active:
+            return
+        instruction = self.bootstrap.next()
+        self._execute_instruction(instruction)
+
+    def _execute_instruction(self, instruction):
+        if self._play_active:
+            self._state_history.append(instruction)
+        if instruction in self._episode_map:
             for ep in self._episodes:
                 ep.set_sm_locked(True)
             self._run_button.setEnabled(False)
+            episode = self._episode_map[instruction]
             episode.start_run()
-            print(f"[BootstrapContainer] Run started (action={action}, phase={self.bootstrap.state_machine.current_phase})")
-        else:
-            print("[BootstrapContainer] Stop - all episodes completed")
-
-    def _on_episode_finished(self):
-        action = self.bootstrap.state_machine.next_action()
-        if action == "continue_run":
-            episode_index = self.bootstrap.state_machine.get_current_episode_index()
-            episode = self._episodes[episode_index]
-            episode.start_run()
-            print(f"[BootstrapContainer] Run completed, continuing... (phase={self.bootstrap.state_machine.current_phase})")
-        else:
+            self.play_started.emit()
+        elif instruction == "FINISHED":
+            self._play_active = False
             self._run_button.setEnabled(True)
-            self.bootstrap.state_machine.reset()
             for ep in self._episodes:
                 ep.set_sm_locked(False)
                 ep.set_button_enabled(True)
-            print(f"[BootstrapContainer] Run completed, all episodes finished (phase={self.bootstrap.state_machine.current_phase})")
-        self._sync_ui()
+            self.bootstrap.reset()
+            self._state_history.append(self.bootstrap.state)
+            self.play_stopped.emit()

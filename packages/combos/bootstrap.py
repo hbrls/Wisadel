@@ -1,85 +1,122 @@
 """Combo Bootstrap 数据类"""
 
-from dataclasses import dataclass, field
 from string import Template
-from typing import List
 
-from combos.plan import Episode
+from transitions import Machine
 
 
-@dataclass
-class BootstrapStateMachine:
-    """Bootstrap 顺序执行状态机：lens-ceo → lens-engineer 循环 N 轮
+class Episode:
+    def __init__(self, id: str = "", filename: str = "", prompt: Template = None, component: str = ""):
+        self.id = id
+        self.filename = filename
+        self.prompt = prompt if prompt is not None else Template("")
+        self.component = component
 
-    根据 episodes 和 loop 参数动态生成 phase 列表。
-    Phase 命名：{episode_id}-{round}，如 lens-ceo-1, lens-engineer-1, lens-ceo-2, ...
+
+class Bootstrap:
+    """Bootstrap 顺序执行数据类（Domain 层）
+
+    单向线性有限状态机：按 PHASES 数组依次推进，每次 next() 吐一个 Episode ID。
+    同一 Episode ID 可在 PHASES 中出现多次，条件函数查阅 PHASES[_step] 决定路由。
     """
 
-    bootstrap: "Bootstrap" = None
-    current_phase: str = "idle"
+    EPISODES = [
+        Episode(
+            id="lens-ceo",
+            filename=".agents/lens/ceo/LENS.md",
+            prompt=Template(
+                "加载并采用 $filename 视角。\n"
+                "加载并遵守 `.agents/skills/bootstrap/SKILL.md` 运作规则。\n"
+                "开始本回合的思考。"
+            ),
+            component="BootstrapSoloEpisode",
+        ),
+        Episode(
+            id="lens-engineer",
+            filename=".agents/lens/engineer/LENS.md",
+            prompt=Template(
+                "加载并采用 $filename 视角。\n"
+                "加载并遵守 `.agents/skills/bootstrap/SKILL.md` 运作规则。\n"
+                "开始本回合的思考。"
+            ),
+            component="BootstrapSoloEpisode",
+        ),
+        Episode(
+            id="committer",
+            filename=".agents/lens/committer/LENS.md",
+            prompt=Template(
+                "加载并采用 $filename 视角。\n"
+                "加载并遵守 `.agents/skills/bootstrap/SKILL.md` 运作规则。\n"
+                "开始本回合的思考。"
+            ),
+            component="BootstrapSoloEpisode",
+        ),
+    ]
 
-    def _build_phases(self) -> list[str]:
-        """根据 episodes 和 loop 动态生成 phase 列表"""
-        episodes = self.bootstrap.episodes if self.bootstrap else []
-        loop = self.bootstrap.loop if self.bootstrap else 1
-        phases = []
-        for round_num in range(1, loop + 1):
-            for ep in episodes:
-                phases.append(f"{ep.id}-{round_num}")
-        return phases
+    PHASES = ["lens-ceo", "lens-engineer", "committer", "lens-ceo", "lens-engineer", "committer"]
 
-    def _get_phase_episode_map(self) -> dict[str, int]:
-        """根据 episodes 和 loop 动态生成 phase → episode index 映射"""
-        episodes = self.bootstrap.episodes if self.bootstrap else []
-        loop = self.bootstrap.loop if self.bootstrap else 1
-        mapping = {}
-        for round_num in range(1, loop + 1):
-            for i, ep in enumerate(episodes):
-                mapping[f"{ep.id}-{round_num}"] = i
-        return mapping
+    def __init__(self, working_directory: str = ""):
+        self.working_directory = working_directory
+        self.episodes = self.EPISODES.copy()
+        self._step = 0
 
-    def next_action(self) -> str:
-        phases = self._build_phases()
-        if not phases:
-            return "stop"
-        if self.current_phase == "idle":
-            self.current_phase = phases[0]
-            return "start_run"
-        try:
-            idx = phases.index(self.current_phase)
-        except ValueError:
-            return "stop"
-        next_idx = idx + 1
-        if next_idx >= len(phases):
-            return "stop"
-        self.current_phase = phases[next_idx]
-        return "continue_run"
+        """
+        State Machine:
 
-    def get_current_episode_index(self) -> int:
-        """获取当前 phase 对应的 episode 索引"""
-        return self._get_phase_episode_map().get(self.current_phase, -1)
+        IDLE ──► lens-ceo ──► lens-engineer ──► committer ──► lens-ceo ──► lens-engineer ──► committer ──► FINISHED
+          ▲                                                                                               │
+          └────────────────────────────────────[reset]─────────────────────────────────────────────────────┘
 
-    def reset(self):
-        """重置为 idle 状态"""
-        self.current_phase = "idle"
+        同一 Episode ID 可出现多次，条件函数查阅 PHASES[_step] 决定下一个目标。
+        """
+        Machine(
+            model=self,
+            states=["IDLE", "lens-ceo", "lens-engineer", "committer", "FINISHED"],
+            initial="IDLE",
+            transitions=[
+                {"trigger": "next", "source": "IDLE", "dest": "lens-ceo"},
+                {"trigger": "next", "source": "lens-ceo", "dest": "lens-engineer", "conditions": "_next_is_engineer"},
+                {"trigger": "next", "source": "lens-ceo", "dest": "committer", "conditions": "_next_is_committer"},
+                {"trigger": "next", "source": "lens-ceo", "dest": "FINISHED", "conditions": "_is_last_step"},
+                {"trigger": "next", "source": "lens-engineer", "dest": "committer", "conditions": "_next_is_committer"},
+                {"trigger": "next", "source": "lens-engineer", "dest": "lens-ceo", "conditions": "_next_is_ceo"},
+                {"trigger": "next", "source": "lens-engineer", "dest": "FINISHED", "conditions": "_is_last_step"},
+                {"trigger": "next", "source": "committer", "dest": "lens-ceo", "conditions": "_next_is_ceo"},
+                {"trigger": "next", "source": "committer", "dest": "FINISHED", "conditions": "_is_last_step"},
+                {"trigger": "reset", "source": "*", "dest": "IDLE"},
+            ],
+        )
 
+    def _next_is_ceo(self) -> bool:
+        return self._step < len(self.PHASES) and self.PHASES[self._step] == "lens-ceo"
 
-@dataclass
-class Bootstrap:
-    working_directory: str = ""
-    loop: int = 2
-    episodes: List[Episode] = field(default_factory=lambda: [
-        Episode(id="lens-ceo", filename=".agents/lens/ceo/LENS.md", prompt=Template(
-            "加载并采用 $filename 视角。\n"
-            "加载并遵守 `.agents/skills/bootstrap/SKILL.md` 运作规则。\n"
-            "开始本回合的思考。"
-        )),
-        Episode(id="lens-engineer", filename=".agents/lens/engineer/LENS.md", prompt=Template(
-            "加载并采用 $filename 视角。\n"
-            "加载并遵守 `.agents/skills/bootstrap/SKILL.md` 运作规则。\n"
-            "开始本回合的思考。"
-        )),
-    ])
+    def _next_is_engineer(self) -> bool:
+        return self._step < len(self.PHASES) and self.PHASES[self._step] == "lens-engineer"
 
-    def __post_init__(self):
-        self.state_machine = BootstrapStateMachine(bootstrap=self)
+    def _next_is_committer(self) -> bool:
+        return self._step < len(self.PHASES) and self.PHASES[self._step] == "committer"
+
+    def _is_last_step(self) -> bool:
+        return self._step >= len(self.PHASES)
+
+    @property
+    def episode_ids(self) -> list[str]:
+        return [ep.id for ep in self.episodes]
+
+    @property
+    def current_episode_index(self) -> int:
+        if self.state in self.episode_ids:
+            return self.episode_ids.index(self.state)
+        return -1
+
+    def next(self) -> str:
+        self.trigger("next")
+        if self.state not in ("FINISHED", "IDLE"):
+            self._step += 1
+            print(f"[Bootstrap] Execute episode '{self.state}' (step={self._step}/{len(self.PHASES)})")
+        return self.state
+
+    def reset(self) -> str:
+        self._step = 0
+        self.trigger("reset")
+        return self.state

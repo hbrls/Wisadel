@@ -32,7 +32,7 @@ class WLoop:
             component="WLoopSoloEpisode",
         ),
     ]
-    LOOP = 3
+    LOOP = 10
 
     def __init__(self, working_directory: str = ""):
         self.working_directory = working_directory
@@ -78,11 +78,11 @@ class WLoop:
     def next(self) -> str:
         """触发状态转换，返回指令（当前状态）"""
         self.trigger("next")
-        
+
         if self.state == "wloop":
             self._count += 1
             print(f"[WLoop] Execute episode 'wloop' (count={self._count}/{self.LOOP})")
-        
+
         return self.state
 
     def reset(self) -> str:

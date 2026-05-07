@@ -51,7 +51,7 @@ class KiloCode(_CommandCoder):
         )
         cwd = tempfile.gettempdir()
         escaped_prompt = prompt.strip().replace("'", "'\"'\"'")
-        command = f"kilocode run --auto -- '{escaped_prompt}'"
+        command = f"kilocode run --auto --print-logs --log-level=WARN -- '{escaped_prompt}'"
 
         if is_windows():
             args = ["pwsh", "-Command", command]
@@ -101,6 +101,7 @@ class KiloCode(_CommandCoder):
 
             stdout_lines: list[str] = []
             stderr_lines: list[str] = []
+            last_output_time: list[float] = [time.monotonic()]
 
             def stream_reader(stream, line_logger, tag: str, line_buffer: list[str]):
                 try:
@@ -108,6 +109,7 @@ class KiloCode(_CommandCoder):
                         stripped_line = line.rstrip("\r\n")
                         if stripped_line:
                             line_logger(f"{tag}: {stripped_line}")
+                            last_output_time[0] = time.monotonic()
                         line_buffer.append(line)
                 finally:
                     stream.close()
@@ -143,7 +145,13 @@ class KiloCode(_CommandCoder):
                     )
                     next_heartbeat = now + 30
 
-                time.sleep(0.2)
+                if now - last_output_time[0] > 300:
+                    logger.warning(
+                        f"IDLE 超时 5min，进程可能卡死，PID: {process.pid}"
+                    )
+                    last_output_time[0] = time.monotonic()
+
+                time.sleep(1.0)
 
             logger.debug("开始等待输出线程结束...")
             stdout_thread.join(timeout=1)
@@ -223,7 +231,7 @@ class KiloCode(_CommandCoder):
             成功时返回 subprocess.CompletedProcess 对象，失败时返回 None
         """
         escaped_prompt = prompt.strip().replace("'", "'\"'\"'")
-        command = f"kilocode run --auto -- '{escaped_prompt}'"
+        command = f"kilocode run --auto --print-logs --log-level=WARN -- '{escaped_prompt}'"
 
         if is_windows():
             args = ["pwsh", "-Command", command]
