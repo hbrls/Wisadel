@@ -1,0 +1,60 @@
+---
+name: w-execute
+description: 任务执行器：从 .context/ 目录读取任务文件，串行执行，每回合只处理一个任务。
+---
+
+# w-execute · 任务执行器
+
+## 目的
+
+本工作流负责从 `.context/` 目录读取 `.md` 任务文件，按"取任务 → 执行任务 → 删除任务 → 停止"串行执行。
+
+每回合只处理一个任务，执行完成后必须停止。
+
+w-execute 不关心任务文件的内容结构，只负责取任务、执行任务内容、删除任务文件。任务内容由任务文件自身定义。
+
+**MUST** 使用下方的脚本获取任务，不允许使用 `Glob` 等工具。
+
+## 执行步骤
+
+### 步骤 1：取任务
+
+使用下面的脚本列出 `.context/` 目录下前缀为 `TASK-` 的 `.md` 任务文件。按文件名排序，取第一个任务文件。
+
+```python
+import os
+context_dir = '.context'
+tasks = sorted(f for f in os.listdir(context_dir) if f.startswith('TASK-') and f.endswith('.md'))
+if not tasks:
+    print("无待处理任务")
+else:
+    task_file = os.path.join(context_dir, tasks[0])
+    print(task_file)
+```
+
+**停止条件**：若 `.context/` 目录无匹配任务文件，停止并报告"无待处理任务"。
+
+### 步骤 2：执行任务
+
+读取任务文件内容，按内容执行任务。任务文件内容定义了具体要做什么。
+
+### 步骤 3：删除任务
+
+当前任务完成后：
+1. 删除已处理的任务文件：`rm .context/{任务文件名}`
+2. 报告完成状态
+3. 停止
+
+## 停止条件
+
+当前任务完成后，**立即停止**。
+
+**MUST 停止的情况**：
+- 一个任务执行完成
+- 任务文件已删除
+- `.context/` 目录无任务文件
+
+**NEVER**：
+- 连续处理多个任务文件
+- 在无明确指令时自动启动下一任务
+- 并行处理多个任务
