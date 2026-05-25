@@ -1,20 +1,25 @@
-"""KiloCode 调用封装"""
-
+import os
+import re
 import time
 from PySide6.QtCore import QThread, Signal, QTimer
-from coders.kilocode import KiloCode
+
+_CHECK_PATTERN = re.compile(r"^CHECK_(\w+):\s+(.+)$")
 
 
-class CoderWorker(QThread):
-    """通用的 QThread 封装 KiloCode 调用，解决 UI 线程阻塞问题。
-    
-    QTimer 在主线程运行，通过信号触发 start/stop。
-    """
+def _check_has_dir(cwd: str, arg: str) -> str:
+    full_path = os.path.normpath(os.path.join(cwd, arg))
+    return "YES" if os.path.isdir(full_path) else "NO"
 
+
+_CHECK_HANDLERS = {
+    "HAS_DIR": _check_has_dir,
+}
+
+
+class CheckerWorker(QThread):
     error = Signal(str)
     elapsed_changed = Signal(int)
-    started = Signal()
-    finished = Signal()
+    finished = Signal(str)
 
     def __init__(self, cwd: str, prompt: str, parent=None):
         super().__init__(parent)
@@ -38,17 +43,12 @@ class CoderWorker(QThread):
         super().start()
         self._start_time = time.time()
         self._elapsed_timer.start()
-        self.started.emit()
 
     def run(self):
-        try:
-            coder = KiloCode()
-            result = coder.run_prompt(self._cwd, self._prompt)
-            if result is None:
-                self.error.emit("命令执行失败")
-        except FileNotFoundError as e:
-            self.error.emit(f"工作目录不存在: {e}")
-        except PermissionError as e:
-            self.error.emit(f"权限不足: {e}")
-        except Exception as e:
-            self.error.emit(f"执行异常: {e}")
+        m = _CHECK_PATTERN.match(self._prompt)
+        if m:
+            handler = _CHECK_HANDLERS.get(m.group(1))
+            result = handler(self._cwd, m.group(2)) if handler else "PASS"
+        else:
+            result = "PASS"
+        self.finished.emit(result)

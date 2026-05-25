@@ -22,7 +22,7 @@ class BootstrapSoloEpisode(CardWidget):
     Solo 按钮和外部 Play 都通过 start_run() 触发同一条执行链。
     """
 
-    file_changed = Signal(str)
+    value_changed = Signal(str)
     run_finished = Signal()
 
     PROGRESS_RING_SIZE = 40
@@ -72,7 +72,7 @@ class BootstrapSoloEpisode(CardWidget):
         layout.addLayout(solo_runner_layout)
 
     def _connect_signals(self):
-        self.file_selector.file_changed.connect(self.file_changed.emit)
+        self.file_selector.value_changed.connect(self.value_changed.emit)
         self._run_button.clicked.connect(self._on_solo_clicked)
 
     def set_working_directory(self, directory: str):
@@ -223,9 +223,9 @@ class ComboBootstrapContainer(QWidget):
         layout.addWidget(self._state_history, stretch=1)
 
     def _connect_signals(self):
-        self._directory_selector.directory_changed.connect(self._on_directory_changed)
+        self._directory_selector.value_changed.connect(self._on_directory_changed)
         for i, episode in enumerate(self._episodes):
-            episode.file_changed.connect(lambda path, idx=i: self._on_file_changed(idx, path))
+            episode.value_changed.connect(lambda path, idx=i: self._on_file_changed(idx, path))
             episode.run_finished.connect(self._on_episode_finished)
         self._run_button.clicked.connect(self._on_play_clicked)
 

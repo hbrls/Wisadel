@@ -15,11 +15,11 @@ class DirectorySelector(QWidget):
     
     作为受控组件使用，提供：
     - value(): 获取当前显示的路径
-    - set_value(path): 静默同步路径，不触发 directory_changed
-    - directory_changed: 用户主动选择目录时发出的信号
+    - set_value(path): 静默同步路径，不触发 value_changed
+    - value_changed: 用户主动选择目录时发出的信号
     """
 
-    directory_changed = Signal(str)
+    value_changed = Signal(str)
 
     BUTTON_SIZE = 33
 
@@ -32,6 +32,7 @@ class DirectorySelector(QWidget):
         super().__init__(parent)
         self._button_text = button_text
         self._placeholder_text = placeholder_text
+        self._base_directory = ""
         self._current_path = ""
         self._setup_ui()
 
@@ -53,8 +54,19 @@ class DirectorySelector(QWidget):
         self._browse_button.clicked.connect(self._on_browse)
         layout.addWidget(self._browse_button)
 
+    def _to_relative_path(self, absolute_path: str) -> str:
+        if self._base_directory and absolute_path.startswith(self._base_directory):
+            return absolute_path[len(self._base_directory):].lstrip("/\\")
+        return absolute_path
+
     def _on_browse(self):
-        initial_path = self._current_path if self._current_path else os.path.expanduser("~")
+        if self._current_path:
+            if os.path.isabs(self._current_path):
+                initial_path = self._current_path
+            else:
+                initial_path = os.path.join(self._base_directory, self._current_path)
+        else:
+            initial_path = self._base_directory if os.path.isdir(self._base_directory) else os.path.expanduser("~")
         selected_dir = QFileDialog.getExistingDirectory(
             self,
             self._placeholder_text,
@@ -62,15 +74,19 @@ class DirectorySelector(QWidget):
             QFileDialog.Option.ShowDirsOnly,
         )
         if selected_dir:
-            self._current_path = selected_dir
-            self._path_edit.setText(selected_dir)
-            self.directory_changed.emit(selected_dir)
+            relative_path = self._to_relative_path(selected_dir)
+            self._current_path = relative_path
+            self._path_edit.setText(relative_path)
+            self.value_changed.emit(relative_path)
 
     def value(self) -> str:
         return self._current_path
 
     def get_value(self) -> str:
         return self.value()
+
+    def set_base_directory(self, directory: str):
+        self._base_directory = directory
 
     def set_value(self, path: str):
         self._current_path = path

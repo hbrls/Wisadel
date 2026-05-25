@@ -20,7 +20,7 @@ class DirectorySelectorBuilder(QObject):
     构建一个包含目录选择按钮、路径显示框的行布局。
     """
 
-    directory_changed = Signal(str)
+    value_changed = Signal(str)
 
     BUTTON_WIDTH = 120
     BUTTON_HEIGHT = 36
@@ -101,7 +101,7 @@ class DirectorySelectorBuilder(QObject):
         )
         if selected_dir:
             self.value.setText(selected_dir)
-            self.directory_changed.emit(selected_dir)
+            self.value_changed.emit(selected_dir)
 
     def get_value(self) -> str:
         """获取当前显示的路径"""

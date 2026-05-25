@@ -5,12 +5,15 @@ from qfluentwidgets import FluentWindow, FluentIcon as FIF, NavigationItemPositi
 from ui.pages.bootstrap_page import BootstrapPage
 from ui.pages.plan_page import PlanPage
 from ui.pages.wloop_page import WLoopPage
-from ui.pages.account_settings_page import AccountPage, SettingsPage
+from ui.pages.aloop_page import ALoopPage
+from ui.pages.account_page import AccountPage
+from ui.pages.settings_page import SettingsPage
 
 
 class MainWindow(FluentWindow):
     window_closing = Signal()
     _wloop_badge = None
+    _aloop_badge = None
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -22,7 +25,7 @@ class MainWindow(FluentWindow):
 
     def _setup_window(self):
         self.setWindowTitle("维维美")
-        self.setMinimumSize(900, 500)
+        self.setMinimumSize(900, 550)
         self.setMicaEffectEnabled(False)
 
     def _restructure_content_area(self):
@@ -53,6 +56,14 @@ class MainWindow(FluentWindow):
             self.plan_page, FIF.CHECKBOX, "Plan",
             position=NavigationItemPosition.TOP,
         )
+
+        self.aloop_page = ALoopPage(self)
+        self.addSubInterface(
+            self.aloop_page, FIF.ROBOT, "ALoop",
+            position=NavigationItemPosition.TOP,
+        )
+
+        self.aloop_page.running_count_changed.connect(self._update_aloop_badge)
 
         self.wloop_page = WLoopPage(self)
         self.addSubInterface(
@@ -102,3 +113,20 @@ class MainWindow(FluentWindow):
     def _hide_wloop_badge(self):
         if self._wloop_badge:
             self._wloop_badge.hide()
+
+    def _update_aloop_badge(self, count: int):
+        nav_widget = self.navigationInterface.widget("ALoopPage")
+        if count == 0:
+            if self._aloop_badge:
+                self._aloop_badge.hide()
+        else:
+            if self._aloop_badge:
+                self._aloop_badge.setText(str(count))
+                self._aloop_badge.show()
+            else:
+                self._aloop_badge = InfoBadge.success(
+                    str(count),
+                    self.navigationInterface.panel,
+                    nav_widget,
+                    InfoBadgePosition.NAVIGATION_ITEM
+                )

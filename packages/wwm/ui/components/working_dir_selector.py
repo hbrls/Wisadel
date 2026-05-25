@@ -8,7 +8,7 @@ from ui.components.directory_selector import DirectorySelector
 
 class WorkingDirSelector(CardWidget):
 
-    directory_changed = Signal(str)
+    value_changed = Signal(str)
 
     def __init__(self, parent=None, button_text: str = "选择目录", placeholder_text: str = "选择工作目录"):
         super().__init__(parent)
@@ -18,7 +18,7 @@ class WorkingDirSelector(CardWidget):
             placeholder_text=placeholder_text,
         )
         self._setup_ui()
-        self._directory_selector.directory_changed.connect(self.directory_changed.emit)
+        self._directory_selector.value_changed.connect(self.value_changed.emit)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)

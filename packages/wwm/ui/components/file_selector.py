@@ -15,12 +15,12 @@ class FileSelector(QWidget):
     
     作为受控组件使用，提供：
     - value(): 获取当前显示的文件路径（相对路径）
-    - set_value(path): 静默同步文件路径（相对路径），不触发 file_changed
+    - set_value(path): 静默同步文件路径（相对路径），不触发 value_changed
     - set_base_directory(directory): 设置工作目录基准
-    - file_changed: 用户主动选择文件时发出的信号（发出相对路径）
+    - value_changed: 用户主动选择文件时发出的信号（发出相对路径）
     """
 
-    file_changed = Signal(str)
+    value_changed = Signal(str)
 
     BUTTON_SIZE = 33
 
@@ -75,7 +75,7 @@ class FileSelector(QWidget):
             relative_path = self._to_relative_path(selected_file)
             self._current_file = relative_path
             self._path_edit.setText(relative_path)
-            self.file_changed.emit(relative_path)
+            self.value_changed.emit(relative_path)
 
     def _to_relative_path(self, absolute_path: str) -> str:
         if self._base_directory and absolute_path.startswith(self._base_directory):

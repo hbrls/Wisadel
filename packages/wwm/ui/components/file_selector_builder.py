@@ -20,7 +20,7 @@ class FileSelectorBuilder(QObject):
     构建一个包含文件选择按钮、路径显示框的行布局。
     """
 
-    file_changed = Signal(str)
+    value_changed = Signal(str)
 
     BUTTON_WIDTH = 120
     BUTTON_HEIGHT = 36
@@ -117,7 +117,7 @@ class FileSelectorBuilder(QObject):
         )
         if selected_file:
             self.value.setText(selected_file)
-            self.file_changed.emit(selected_file)
+            self.value_changed.emit(selected_file)
 
     def get_value(self) -> str:
         """获取当前显示的路径"""
