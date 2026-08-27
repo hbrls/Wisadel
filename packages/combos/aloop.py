@@ -39,7 +39,7 @@ class ALoop:
             component="ALoopSoloEpisode",
         ),
     ]
-    LOOP = 10
+    LOOP = 20
 
     def __init__(self):
         self.episodes = self.EPISODES.copy()
