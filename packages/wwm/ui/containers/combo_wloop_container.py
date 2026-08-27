@@ -12,6 +12,7 @@ from ui.styles import SPACING
 from combos.wloop import WLoop, Episode
 from ui.components.working_dir_selector import WorkingDirSelector
 from ui.components.file_selector import FileSelector
+from ui.components.directory_selector import DirectorySelector
 from ui.components.coder_worker import CoderWorker
 from ui.components.combo_states import ComboStates
 
@@ -29,13 +30,17 @@ class WLoopSoloEpisode(CardWidget):
     PROGRESS_RING_SIZE = 40
     PROGRESS_SECONDS_MAX = 300
 
-    def __init__(self, episode_id: str, parent=None):
+    def __init__(self, episode_id: str, prompt: Template, is_dir: bool = False, parent=None):
         super().__init__(parent)
         self.episode_id = episode_id
-        self.file_selector = FileSelector(parent=self)
+        self._prompt = prompt
+        self._is_dir = is_dir
+        if is_dir:
+            self._selector = DirectorySelector(parent=self)
+        else:
+            self._selector = FileSelector(parent=self)
         self._working_directory = ""
         self._file_value = ""
-        self._prompt = Template("")
         self._worker = None
         self._sm_locked = False
         self._setup_ui()
@@ -46,7 +51,7 @@ class WLoopSoloEpisode(CardWidget):
         layout.setContentsMargins(SPACING["md"], SPACING["md"], SPACING["md"], SPACING["md"])
         layout.setSpacing(SPACING["sm"])
 
-        layout.addWidget(self.file_selector, stretch=1)
+        layout.addWidget(self._selector, stretch=1)
 
         solo_runner_layout = QHBoxLayout()
         solo_runner_layout.setContentsMargins(0, 0, 0, 0)
@@ -73,16 +78,18 @@ class WLoopSoloEpisode(CardWidget):
         layout.addLayout(solo_runner_layout)
 
     def _connect_signals(self):
-        self.file_selector.value_changed.connect(self.value_changed.emit)
+        self._selector.value_changed.connect(self._on_selector_value_changed)
         self._run_button.clicked.connect(self._on_solo_clicked)
 
     def set_working_directory(self, directory: str):
         self._working_directory = directory
+        self._selector.set_base_directory(directory)
 
     def set_file_value(self, value: str):
+        if self._is_dir and not value.endswith("/"):
+            value += "/"
         self._file_value = value
-        self.file_selector.set_value(value)
-        self.file_selector.set_base_directory(self._working_directory)
+        self._selector.set_value(value)
 
     def set_prompt(self, prompt: Template):
         self._prompt = prompt
@@ -147,6 +154,12 @@ class WLoopSoloEpisode(CardWidget):
         else:
             self._run_button.setEnabled(enabled)
 
+    def _on_selector_value_changed(self, path: str):
+        if self._is_dir and not path.endswith("/"):
+            path += "/"
+        self._file_value = path
+        self.value_changed.emit(path)
+
 
 class ComboWLoopContainer(QWidget):
     """Combo WLoop Container 组件
@@ -158,12 +171,16 @@ class ComboWLoopContainer(QWidget):
     状态机控制！Container 不决策，只执行指令。
     """
 
-    play_started = Signal()
-    play_stopped = Signal()
+    run_state_changed = Signal(bool)
 
-    def __init__(self, parent=None):
+    def __init__(self, run_id: str = "", parent=None):
         super().__init__(parent)
+        self.run_id = run_id
         self.wloop = WLoop()
+        self.wloop.episodes = [
+            Episode(id=ep.id, filename=ep.filename, prompt=ep.prompt, component=ep.component)
+            for ep in self.wloop.episodes
+        ]
         self._play_active = False
         self._syncing = False
         self._directory_selector = None
@@ -204,7 +221,12 @@ class ComboWLoopContainer(QWidget):
 
         for ep in self.wloop.episodes:
             if ep.component == "WLoopSoloEpisode":
-                episode_ui = WLoopSoloEpisode(episode_id=ep.id, parent=self)
+                episode_ui = WLoopSoloEpisode(
+                    episode_id=ep.id,
+                    prompt=ep.prompt,
+                    is_dir=ep.filename.endswith("/"),
+                    parent=self,
+                )
                 left_layout.addWidget(episode_ui)
                 self._episodes.append(episode_ui)
                 self._episode_map[ep.id] = episode_ui
@@ -240,7 +262,6 @@ class ComboWLoopContainer(QWidget):
             if episode_ui:
                 episode_ui.set_working_directory(self.wloop.working_directory)
                 episode_ui.set_file_value(ep.filename)
-                episode_ui.set_prompt(ep.prompt)
 
         self._syncing = False
 
@@ -280,7 +301,7 @@ class ComboWLoopContainer(QWidget):
             self._run_button.setEnabled(False)
             episode = self._episode_map[instruction]
             episode.start_run()
-            self.play_started.emit()
+            self.run_state_changed.emit(True)
         elif instruction == "FINISHED":
             self._play_active = False
             self._run_button.setEnabled(True)
@@ -289,4 +310,4 @@ class ComboWLoopContainer(QWidget):
                 ep.set_button_enabled(True)
             self.wloop.reset()
             self._state_history.append(self.wloop.state)
-            self.play_stopped.emit()
+            self.run_state_changed.emit(False)

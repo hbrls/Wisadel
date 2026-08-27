@@ -71,8 +71,7 @@ class MainWindow(FluentWindow):
             position=NavigationItemPosition.TOP,
         )
 
-        self.wloop_page.wloop_container.play_started.connect(self._show_wloop_badge)
-        self.wloop_page.wloop_container.play_stopped.connect(self._hide_wloop_badge)
+        self.wloop_page.running_count_changed.connect(self._update_wloop_badge)
 
         self.account_page = AccountPage(self)
         self.addSubInterface(
@@ -98,21 +97,22 @@ class MainWindow(FluentWindow):
     def update_status(self, message: str):
         self.status_bar.showMessage(message)
 
-    def _show_wloop_badge(self):
+    def _update_wloop_badge(self, count: int):
         nav_widget = self.navigationInterface.widget("WLoopPage")
-        if self._wloop_badge:
-            self._wloop_badge.show()
+        if count == 0:
+            if self._wloop_badge:
+                self._wloop_badge.hide()
         else:
-            self._wloop_badge = InfoBadge.success(
-                "1", 
-                self.navigationInterface.panel,
-                nav_widget, 
-                InfoBadgePosition.NAVIGATION_ITEM
-            )
-
-    def _hide_wloop_badge(self):
-        if self._wloop_badge:
-            self._wloop_badge.hide()
+            if self._wloop_badge:
+                self._wloop_badge.setText(str(count))
+                self._wloop_badge.show()
+            else:
+                self._wloop_badge = InfoBadge.success(
+                    str(count),
+                    self.navigationInterface.panel,
+                    nav_widget,
+                    InfoBadgePosition.NAVIGATION_ITEM
+                )
 
     def _update_aloop_badge(self, count: int):
         nav_widget = self.navigationInterface.widget("ALoopPage")
