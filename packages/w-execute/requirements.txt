@@ -2,7 +2,7 @@
 -e ../combos
 -e ../coders
 
-# WWM (Windows Window Manager) Dependencies
+# w-execute Dependencies
 pyinstaller==6.11.1
 pyinstaller-hooks-contrib==2026.0
 

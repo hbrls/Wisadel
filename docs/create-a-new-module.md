@@ -1,7 +1,7 @@
 # 创建新模块指南
 
-> updated_by: Cascade - Claude-Sonnet-3.7
-> updated_at: 2026-04-14 18:54:00
+> updated_by: Codex
+> updated_at: 2026-08-27 17:33:21
 
 本指南介绍如何在 wishadel 项目中创建一个新的 Python 模块包。
 
@@ -9,10 +9,13 @@
 
 ```
 packages/
-├── agents/          # Agent 模块（参考实现）
-├── combos/          # Combos 模块（参考实现）
-└── wwm/             # Windows Window Manager（消费方）
-    ├── requirements.txt  # 依赖声明
+├── coders/              # 代码执行模块
+├── combos/              # Combo 模块（参考实现）
+├── wwm/                 # WWM 桌面应用（消费方）
+│   ├── requirements.txt # 依赖声明
+│   └── main.py
+└── w-execute/           # w-execute 桌面应用（消费方）
+    ├── requirements.txt # 依赖声明
     └── main.py
 ```
 
@@ -67,23 +70,29 @@ packages/{module_name}/
     └── test_xxx.py
 ```
 
-### 4. 更新消费者依赖
+### 4. 更新消费方依赖
 
-编辑 `packages/wwm/requirements.txt`，添加 editable install 依赖：
+确定实际消费该模块的活跃应用，并编辑对应的依赖文件：
+
+- `packages/wwm/requirements.txt`
+- `packages/w-execute/requirements.txt`
+
+仅在实际依赖该模块的应用中添加 editable install 依赖；如果两个应用都依赖该模块，则两个文件都需要更新：
 
 ```diff
  # Internal packages (editable install)
 +-e ../{module_name}
- -e ../agents
  -e ../combos
 ```
 
 ### 5. 在消费方安装并验证
 
-在消费方（如 `packages/wwm`）安装所有依赖并验证导入：
+在实际消费方安装所有依赖并验证导入。下例中的 `{consumer}` 为 `wwm` 或 `w-execute`：
+
+> 以下命令仅供开发者在 PyCharm 手工管理的环境中执行。Agent 禁止执行 Python、pip、构建或依赖管理命令，只能进行静态检查。
 
 ```bash
-pip install -r packages/wwm/requirements.txt
+pip install -r packages/{consumer}/requirements.txt
 
 # 验证子模块导入（禁止使用根目录导入）
 python -c "from {module_name}.{sub1} import Yyy; print(Yyy)"
@@ -132,8 +141,8 @@ packages = [
 - [ ] `packages` 列表手动包含所有子模块（不使用 find_packages）
 - [ ] `package-dir` 映射正确
 - [ ] `__init__.py` 不导出任何公开 API
-- [ ] requirements.txt 包含 `-e ../{module_name}`
-- [ ] `pip install -r packages/wwm/requirements.txt` 成功（**修改过 pyproject.toml 后必须重新执行**）
+- [ ] 所有实际消费方的 `requirements.txt` 均包含 `-e ../{module_name}`
+- [ ] `pip install -r packages/{consumer}/requirements.txt` 成功（**修改过 pyproject.toml 后必须由开发者重新执行**）
 - [ ] `python -c "from {module_name}.{sub} import ..."` 成功
 - [ ] 验证**禁止**使用 `from {module_name} import`
 
@@ -151,15 +160,15 @@ packages = [
 
 ### Q: 用了 `find` 方式，`{module_name}.providers` 等子包无法访问
 
-**A**: 这是 `find` + 同名子目录组合导致的陷阱。如果包目录内有与包同名的子目录（如 `packages/agents/agents/`），使用：
+**A**: 这是 `find` + 同名子目录组合导致的陷阱。如果包目录内有与包同名的子目录（如 `packages/{module_name}/{module_name}/`），使用：
 
 ```toml
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["agents*"]
+include = ["{module_name}*"]
 ```
 
-setuptools 会把**内层** `packages/agents/agents/` 误识别为顶层 `agents` 包，外层 `__init__.py` 和 `providers/`、`tools/` 等兄弟子包全部被忽略，表现为 `import agents.providers` 抛 `ModuleNotFoundError`。
+setuptools 可能会把内层同名目录误识别为顶层包，导致外层 `__init__.py` 和兄弟子包被忽略，表现为子包导入失败。
 
 **正确做法**：始终使用 `package-dir` 映射方式（见上文），**禁止使用 `find` 方式**。
 
@@ -168,7 +177,7 @@ setuptools 会把**内层** `packages/agents/agents/` 误识别为顶层 `agents
 **A**: `egg-info` 已过期。`pyproject.toml` 变更后，setuptools 不会自动更新已安装的包元数据，必须重新执行：
 
 ```bash
-pip install -r packages/wwm/requirements.txt
+pip install -r packages/{consumer}/requirements.txt
 ```
 
 可通过检查 `packages/{module_name}/{module_name}.egg-info/SOURCES.txt` 确认内容是否包含期望的子包。
@@ -178,4 +187,3 @@ pip install -r packages/wwm/requirements.txt
 ## 参考实现
 
 - **combos 模块**: `packages/combos/` - 简单的 prompt 模板包
-- **agents 模块**: `packages/agents/` - 复杂的 Agent 框架包

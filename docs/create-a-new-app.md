@@ -15,9 +15,7 @@ wishadel 是一个多包 monorepo 项目，采用 packages 级别的模块架构
 wishadel/
 ├── docs/                          # 项目文档
 ├── packages/
-│   ├── agents/                    # Agent 模块
 │   ├── coders/                    # 代码生成/处理模块
-│   ├── dashboard/                 # Dashboard UI 应用
 │   ├── combos/                    # Combo 执行模块
 │   └── wwm/                       # WWM (维维美) 桌面客户端
 └── ...
@@ -145,7 +143,7 @@ self.setAttribute(Qt.WA_TranslucentBackground)
 ### UI 框架选择
 
 - **选择**：PySide6
-- **理由**：与 dashboard 保持一致，GPL/LGPL 商业可用
+- **理由**：采用成熟的 Qt for Python 方案，GPL/LGPL 商业可用
 
 ### Shell 调用方式
 

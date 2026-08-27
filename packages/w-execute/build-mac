@@ -1,0 +1,25 @@
+#!/bin/sh
+
+set -eu
+
+cd "$(dirname "$0")"
+
+echo "Building w-execute.app..."
+pyinstaller --clean --noconfirm \
+  --onedir \
+  --windowed \
+  --name w-execute \
+  --icon "assets/icon.icns" \
+  --paths "." \
+  --paths "../combos" \
+  --paths "../coders" \
+  --add-data "assets/icon-128x128.png:assets" \
+  main.py
+
+# PyInstaller creates a sibling onedir output when building a macOS app.
+# The BUNDLE contains its own complete runtime, so keep only the .app artifact.
+if [ -e "dist/w-execute" ]; then
+  rm -rf "dist/w-execute"
+fi
+
+echo "Done! Check dist/w-execute.app"
