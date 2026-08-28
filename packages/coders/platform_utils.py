@@ -19,6 +19,26 @@ def is_linux() -> bool:
     return sys.platform.startswith("linux")
 
 
+def get_subprocess_env() -> dict[str, str]:
+    """获取用于启动外部命令的环境变量。"""
+    env = os.environ.copy()
+
+    if is_macos():
+        home_dir = env.get("HOME") or os.path.expanduser("~")
+        path_items = [
+            os.path.join(home_dir, "backstage"),
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/opt/homebrew/opt/node@22/bin",
+            *env.get("PATH", "").split(os.pathsep),
+        ]
+        env["PATH"] = os.pathsep.join(
+            dict.fromkeys(item for item in path_items if item)
+        )
+
+    return env
+
+
 def get_log_dir(app_name: str = "Dashboard") -> str:
     """获取日志目录（跨平台）
 

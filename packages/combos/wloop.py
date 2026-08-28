@@ -32,7 +32,7 @@ class WLoop:
             component="WLoopSoloEpisode",
         ),
     ]
-    LOOP = 10
+    LOOP = 20
 
     def __init__(self, working_directory: str = ""):
         self.working_directory = working_directory

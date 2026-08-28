@@ -235,7 +235,7 @@ class ComboWLoopContainer(QWidget):
         self._run_button.setFixedHeight(33)
         left_layout.addWidget(self._run_button)
 
-        layout.addWidget(left_panel, stretch=7)
+        layout.addWidget(left_panel, stretch=10)
 
         separator = QFrame(self)
         separator.setFrameShape(QFrame.Shape.VLine)
@@ -243,7 +243,7 @@ class ComboWLoopContainer(QWidget):
         layout.addWidget(separator)
 
         self._state_history = ComboStates(self)
-        layout.addWidget(self._state_history, stretch=1)
+        layout.addWidget(self._state_history, stretch=2)
 
     def _connect_signals(self):
         self._directory_selector.value_changed.connect(self._on_directory_changed)

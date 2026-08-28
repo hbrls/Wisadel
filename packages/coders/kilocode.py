@@ -20,7 +20,7 @@ from uuid import uuid4
 from loguru import logger
 
 from coders._command_coder import _CommandCoder
-from coders.platform_utils import is_macos, is_windows
+from coders.platform_utils import get_subprocess_env, is_macos, is_windows
 
 
 class KiloCode(_CommandCoder):
@@ -96,6 +96,8 @@ class KiloCode(_CommandCoder):
                 errors="replace",
                 bufsize=1,
                 cwd=cwd,
+                env=get_subprocess_env(),
+                creationflags=subprocess.CREATE_NO_WINDOW if is_windows() else 0,
             )
             logger.debug(f"子进程已启动，PID: {process.pid}")
 

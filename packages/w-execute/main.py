@@ -1,5 +1,7 @@
 """w-execute application entry point."""
 
+import logger_config  # 触发全局日志配置
+
 import sys
 from pathlib import Path
 

@@ -6,6 +6,8 @@ from typing import Sequence
 
 from loguru import logger
 
+from coders.platform_utils import get_subprocess_env
+
 
 class _CommandCoder(ABC):
     """命令执行器抽象基类"""
@@ -30,6 +32,7 @@ class _CommandCoder(ABC):
                 stdin=subprocess.DEVNULL,
                 text=True,
                 encoding="utf-8",
+                env=get_subprocess_env(),
                 timeout=60,
             )
             return result
